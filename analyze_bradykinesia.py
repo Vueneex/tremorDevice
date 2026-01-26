@@ -11,6 +11,7 @@ import traceback
 
 FS = 100.0
 
+# Başlangıç
 def run_analysis(file_path):
     print(f"\n{'='*60}")
     print(f"🐢 BREDIKINEZI (YAVAŞLIK) ANALİZİ BAŞLATILDI: {os.path.basename(file_path)}")
