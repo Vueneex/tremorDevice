@@ -1,0 +1,12 @@
+# OTOMATIK OLUSTURULAN KALIBRASYON DOSYASI
+# Olusturulma Tarihi: 2026-01-28 13:21:28
+
+# Jiroskop Sapma Degerleri (Bias)
+OFFSET_GX = 1463.1900
+OFFSET_GY = 1094.5920
+OFFSET_GZ = 386.8360
+
+# Ivmeolcer Sapma Degerleri (Bias)
+OFFSET_AX = -31.8160
+OFFSET_AY = -85.1040
+OFFSET_AZ = 727.2800

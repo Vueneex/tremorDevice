@@ -11,8 +11,15 @@ import datetime
 import warnings
 import traceback 
 
+# Kalibrasyon Kontrolü (Varsa okur, yoksa geçer)
+try:
+    import kalibrasyon_verisi
+    CALIBRATION_EXIST = True
+except ImportError:
+    CALIBRATION_EXIST = False
+
 # Ayarlar
-FS = 100.0                 
+FS = 50.0                 
 BASE_ACC_ESIK = 0.03       
 BASE_GYRO_ESIK = 5.0       
 DYNAMIC_FACTOR = 0.25      
@@ -28,6 +35,7 @@ class Madgwick:
         self.samplePeriod = sampleperiod
         self.beta = beta
         self.q = np.array([1.0, 0.0, 0.0, 0.0]) 
+        
     def update(self, gx, gy, gz, ax, ay, az):
         q = self.q
         norm = np.sqrt(ax*ax + ay*ay + az*az)
@@ -54,6 +62,7 @@ class Madgwick:
         q[3] += qDot3 * self.samplePeriod
         norm = np.sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3])
         self.q = q / norm
+        
     def get_gravity_vector(self):
         q = self.q
         return np.array([2*(q[1]*q[3] - q[0]*q[2]), 2*(q[0]*q[1] + q[2]*q[3]), q[0]**2 - q[1]**2 - q[2]**2 + q[3]**2])
@@ -110,6 +119,15 @@ def run_analysis(file_path):
         if len(df) < 50:
             print("❌ HATA: Kayıt çok kısa.")
             return
+
+        # --- KALİBRASYON DÜZELTMESİ ---
+        if CALIBRATION_EXIST:
+            df['AccX'] -= kalibrasyon_verisi.OFFSET_AX
+            df['AccY'] -= kalibrasyon_verisi.OFFSET_AY
+            df['AccZ'] -= kalibrasyon_verisi.OFFSET_AZ
+            df['GyroX'] -= kalibrasyon_verisi.OFFSET_GX
+            df['GyroY'] -= kalibrasyon_verisi.OFFSET_GY
+            df['GyroZ'] -= kalibrasyon_verisi.OFFSET_GZ
 
         # Zaman Ekseni
         dosya_zamani = os.path.getctime(file_path)
