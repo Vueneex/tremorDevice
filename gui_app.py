@@ -10,14 +10,14 @@ from datetime import datetime
 # Arayüz Kütüphaneleri
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QComboBox, 
-                             QMessageBox, QGroupBox)
+                             QMessageBox, QFrame, QSizePolicy)
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtGui import QFont, QColor, QIcon
 
 # Grafik Kütüphanesi
 import pyqtgraph as pg
 
-# Senin Mevcut Analiz Modüllerin (Dosyalar aynı klasörde olmalı)
+# Analiz modüllerini çağırıyoruz
 try:
     import analyze_tremor
     import analyze_bradykinesia
@@ -25,11 +25,10 @@ except ImportError:
     print("Uyarı: Analiz modülleri bulunamadı, sadece canlı izleme çalışacak.")
 
 # ----------------------------------------
-# 1. ARKA PLAN İŞÇİSİ (THREAD)
-# Arayüz donmasın diye USB okuma işini bu arkadaş yapar.
+# 1. ARKA PLAN İŞÇİSİ (Aynı kaldı)
 # ----------------------------------------
 class SerialWorker(QThread):
-    data_received = pyqtSignal(list) # Veriyi ana ekrana fırlatan sinyal
+    data_received = pyqtSignal(list)
 
     def __init__(self, port_name, baud_rate=115200):
         super().__init__()
@@ -41,34 +40,21 @@ class SerialWorker(QThread):
     def run(self):
         try:
             self.serial_conn = serial.Serial(self.port_name, self.baud_rate, timeout=1)
-            print(f"Bağlandı: {self.port_name}")
-            
             while self.is_running:
                 if self.serial_conn.in_waiting:
                     try:
                         line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
                         parts = line.split(',')
-                        
                         if len(parts) == 6:
-                            # Önce ham veriyi alıyoruz
                             raw_data = [float(x) for x in parts]
-                            
-                            # --- DÖNÜŞÜM (RAW -> REAL) ---
-                            # MPU9250 Standart Ayarlarına Göre:
-                            # İvme (Acc): 1g = 16384 birim
-                            # Gyro: 1 derece/sn = 131 birim
-                            
+                            # Dönüşümler (Önceki kodun aynısı)
                             ax = raw_data[0] / 16384.0
                             ay = raw_data[1] / 16384.0
                             az = raw_data[2] / 16384.0
-                            
                             gx = raw_data[3] / 131.0
                             gy = raw_data[4] / 131.0
                             gz = raw_data[5] / 131.0
-                            
-                            # Dönüştürülmüş veriyi gönder
                             self.data_received.emit([ax, ay, az, gx, gy, gz])
-                            
                     except ValueError:
                         pass
         except Exception as e:
@@ -82,107 +68,234 @@ class SerialWorker(QThread):
         self.wait()
 
 # ----------------------------------------
-# 2. ANA PENCERE (GUI)
+# 2. ANA PENCERE (Tasarım Burada Değişti)
 # ----------------------------------------
 class ParkinsonGUI(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Parkinson Hareket Analiz Sistemi v3.0")
-        self.resize(1200, 800)
-        self.setStyleSheet("background-color: #2b2b2b; color: white;")
+        self.setWindowTitle("Parkinson Analiz v3.0") # İsim havalı olsun :)
+        self.resize(1280, 850)
+        
+        # --- MODERN STİL DOSYASI (QSS) ---
+        # Burası arayüzün CSS makyajıdır.
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #1e1e2e; /* Çok koyu lacivert/gri */
+            }
+            QLabel {
+                color: #cdd6f4;
+                font-size: 14px;
+                font-family: 'Segoe UI', sans-serif;
+            }
+            QComboBox {
+                background-color: #313244;
+                color: white;
+                border: 1px solid #45475a;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QComboBox::drop-down {
+                border: 0px;
+            }
+            /* KART TASARIMI */
+            QFrame#ControlPanel {
+                background-color: #181825;
+                border-radius: 15px;
+                border: 1px solid #313244;
+            }
+            /* HEADER TASARIMI */
+            QFrame#Header {
+                background-color: #11111b;
+                border-bottom: 2px solid #cba6f7;
+            }
+            QLabel#HeaderTitle {
+                font-size: 22px;
+                font-weight: bold;
+                color: #cba6f7;
+            }
+            QLabel#StatusLabel {
+                font-weight: bold;
+                color: #f9e2af;
+            }
+        """)
 
         # Değişkenler
         self.worker = None
-        self.recording_data = [] # Verileri burada biriktireceğiz
+        self.recording_data = [] 
         self.is_recording = False
         self.current_filename = ""
-
-        # Arayüzü Kur
-        self.init_ui()
-
-    def init_ui(self):
-        # Ana Düzen
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
-
-        # --- SOL PANEL (KONTROLLER) ---
-        control_panel = QGroupBox("Kontrol Paneli")
-        control_panel.setFixedWidth(250)
-        control_panel.setStyleSheet("QGroupBox { border: 1px solid gray; border-radius: 5px; margin-top: 10px; font-weight: bold; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }")
-        left_layout = QVBoxLayout(control_panel)
-
-        # Port Seçimi
-        left_layout.addWidget(QLabel("Port Seçimi:"))
-        self.combo_ports = QComboBox()
-        self.refresh_ports()
-        left_layout.addWidget(self.combo_ports)
-
-        btn_refresh = QPushButton("Portları Yenile")
-        btn_refresh.clicked.connect(self.refresh_ports)
-        left_layout.addWidget(btn_refresh)
-
-        # Bağlan / Kes Butonları
-        self.btn_connect = QPushButton("BAĞLAN")
-        self.btn_connect.setStyleSheet("background-color: #27ae60; font-weight: bold; padding: 10px;")
-        self.btn_connect.clicked.connect(self.toggle_connection)
-        left_layout.addWidget(self.btn_connect)
-
-        left_layout.addSpacing(20)
-
-        # Kayıt ve Analiz
-        left_layout.addWidget(QLabel("Analiz Modu:"))
-        self.combo_mode = QComboBox()
-        self.combo_mode.addItems(["1 - Tremor (Titreme)", "2 - Bradikinezi (Yavaşlık)"])
-        left_layout.addWidget(self.combo_mode)
-
-        self.btn_record = QPushButton("KAYIT BAŞLAT")
-        self.btn_record.setStyleSheet("background-color: #c0392b; font-weight: bold; padding: 10px;")
-        self.btn_record.setEnabled(False) # Bağlanmadan kayıt yapılamaz
-        self.btn_record.clicked.connect(self.toggle_recording)
-        left_layout.addWidget(self.btn_record)
-
-        self.lbl_status = QLabel("Durum: Bekleniyor...")
-        self.lbl_status.setStyleSheet("color: #f1c40f; font-size: 12px;")
-        left_layout.addWidget(self.lbl_status)
-
-        left_layout.addStretch() # Boşluğu alta it
-        
-        # --- SAĞ PANEL (GRAFİKLER) ---
-        graph_layout = QVBoxLayout()
-        
-        # Grafik 1: İvme (Acc)
-        self.plot_acc = pg.PlotWidget(title="İvme (Accelerometer - G)")
-        self.plot_acc.showGrid(x=True, y=True)
-        self.plot_acc.setLabel('left', 'Acc (g)')
-        self.plot_acc.addLegend()
-        self.curve_ax = self.plot_acc.plot(pen=pg.mkPen('r', width=2), name="X")
-        self.curve_ay = self.plot_acc.plot(pen=pg.mkPen('g', width=2), name="Y")
-        self.curve_az = self.plot_acc.plot(pen=pg.mkPen('b', width=2), name="Z")
-        graph_layout.addWidget(self.plot_acc)
-
-        # Grafik 2: Jiroskop (Gyro)
-        self.plot_gyro = pg.PlotWidget(title="Dönme (Gyroscope - °/s)")
-        self.plot_gyro.showGrid(x=True, y=True)
-        self.plot_gyro.setLabel('left', 'Gyro (°/s)')
-        self.plot_gyro.addLegend()
-        self.curve_gx = self.plot_gyro.plot(pen=pg.mkPen('c', width=2), name="X")
-        self.curve_gy = self.plot_gyro.plot(pen=pg.mkPen('m', width=2), name="Y")
-        self.curve_gz = self.plot_gyro.plot(pen=pg.mkPen('y', width=2), name="Z")
-        graph_layout.addWidget(self.plot_gyro)
-
-        # Layoutları yerleştir
-        main_layout.addWidget(control_panel)
-        main_layout.addLayout(graph_layout)
-
-        # Veri Saklama (Buffer) - Son 200 veriyi grafikte göstermek için
         self.data_buffer = {
             'ax': [], 'ay': [], 'az': [],
             'gx': [], 'gy': [], 'gz': []
         }
-        self.buffer_size = 300 # Ekranda kaç nokta görünecek
+        self.buffer_size = 300 
 
+        self.init_ui()
+
+    def init_ui(self):
+        # Ana Widget
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0) # Kenar boşluklarını sıfırla
+        main_layout.setSpacing(0)
+
+        # --- 1. HEADER (ÜST ÇUBUK) ---
+        header_frame = QFrame()
+        header_frame.setObjectName("Header") # CSS'de yakalamak için ID verdik
+        header_frame.setFixedHeight(60)
+        header_layout = QHBoxLayout(header_frame)
+        
+        title_label = QLabel("🧬 NeuroMotion | Parkinson Analiz Sistemi")
+        title_label.setObjectName("HeaderTitle")
+        
+        self.lbl_status = QLabel("Durum: Bekleniyor...")
+        self.lbl_status.setObjectName("StatusLabel")
+        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        header_layout.addWidget(self.lbl_status)
+        
+        main_layout.addWidget(header_frame)
+
+        # --- 2. İÇERİK ALANI (ORTA) ---
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(20, 20, 20, 20) # İçeriğe boşluk ver
+        content_layout.setSpacing(20)
+
+        # --- SOL PANEL (KONTROLLER) ---
+        control_frame = QFrame()
+        control_frame.setObjectName("ControlPanel")
+        control_frame.setFixedWidth(300)
+        # Gölge Efekti (Shadow)
+        # Not: PyQt'de gölge biraz karmaşıktır, şimdilik renklerle derinlik verdik.
+        
+        left_layout = QVBoxLayout(control_frame)
+        left_layout.setSpacing(15)
+        left_layout.setContentsMargins(20, 30, 20, 30)
+
+        # Başlık
+        lbl_settings = QLabel("CİHAZ AYARLARI")
+        lbl_settings.setStyleSheet("color: #6c7086; font-weight: bold; letter-spacing: 1px;")
+        left_layout.addWidget(lbl_settings)
+
+        # Port Seçimi
+        self.combo_ports = QComboBox()
+        self.refresh_ports()
+        left_layout.addWidget(self.combo_ports)
+
+        btn_refresh = self.create_button("Portları Yenile", "#45475a", "#585b70")
+        btn_refresh.clicked.connect(self.refresh_ports)
+        left_layout.addWidget(btn_refresh)
+
+        # Bağlan Butonu
+        self.btn_connect = self.create_button("CİHAZA BAĞLAN", "#a6e3a1", "#94e2d5", text_color="#1e1e2e")
+        self.btn_connect.clicked.connect(self.toggle_connection)
+        left_layout.addWidget(self.btn_connect)
+
+        left_layout.addSpacing(20)
+        
+        # Analiz Bölümü Çizgisi
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setStyleSheet("color: #45475a;")
+        left_layout.addWidget(line)
+
+        lbl_analysis = QLabel("TEST VE ANALİZ")
+        lbl_analysis.setStyleSheet("color: #6c7086; font-weight: bold; letter-spacing: 1px;")
+        left_layout.addWidget(lbl_analysis)
+
+        # Mod Seçimi
+        self.combo_mode = QComboBox()
+        self.combo_mode.addItems(["1. Tremor (Titreme)", "2. Bradikinezi (Yavaşlık)"])
+        left_layout.addWidget(self.combo_mode)
+
+        # Kayıt Butonu
+        self.btn_record = self.create_button("KAYDI BAŞLAT", "#e32f2f", "#eba0ac", text_color="#1e1e2e")
+        self.btn_record.setEnabled(False)
+        self.btn_record.setMinimumHeight(50) # Büyük buton
+        self.btn_record.clicked.connect(self.toggle_recording)
+        left_layout.addWidget(self.btn_record)
+
+        left_layout.addStretch()
+        
+        # Logo veya Versiyon
+        lbl_ver = QLabel("v3.0.1 Stable")
+        lbl_ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_ver.setStyleSheet("color: #45475a; font-size: 10px;")
+        left_layout.addWidget(lbl_ver)
+
+        # --- SAĞ PANEL (GRAFİKLER) ---
+        graph_layout = QVBoxLayout()
+        
+        # Grafik Stili (PyQtGraph)
+        pg.setConfigOption('background', '#181825') # Grafik arka planı
+        pg.setConfigOption('foreground', '#cdd6f4') # Yazı rengi
+        
+        # Grafik 1
+        self.plot_acc = pg.PlotWidget(title="İvme (G-Force)")
+        self.plot_acc.showGrid(x=True, y=True, alpha=0.3)
+        self.customize_plot(self.plot_acc)
+        self.curve_ax = self.plot_acc.plot(pen=pg.mkPen('#f38ba8', width=2), name="X") # Kırmızımsı
+        self.curve_ay = self.plot_acc.plot(pen=pg.mkPen('#a6e3a1', width=2), name="Y") # Yeşilimsi
+        self.curve_az = self.plot_acc.plot(pen=pg.mkPen('#89b4fa', width=2), name="Z") # Mavimsi
+        graph_layout.addWidget(self.plot_acc)
+
+        # Grafik 2
+        self.plot_gyro = pg.PlotWidget(title="Jiroskop (Açısal Hız)")
+        self.plot_gyro.showGrid(x=True, y=True, alpha=0.3)
+        self.customize_plot(self.plot_gyro)
+        self.curve_gx = self.plot_gyro.plot(pen=pg.mkPen('#fab387', width=2), name="X") # Turuncu
+        self.curve_gy = self.plot_gyro.plot(pen=pg.mkPen('#f9e2af', width=2), name="Y") # Sarı
+        self.curve_gz = self.plot_gyro.plot(pen=pg.mkPen('#cba6f7', width=2), name="Z") # Mor
+        graph_layout.addWidget(self.plot_gyro)
+
+        # Layoutları Birleştir
+        content_layout.addWidget(control_frame)
+        content_layout.addLayout(graph_layout)
+        
+        main_layout.addLayout(content_layout)
+
+    # --- YARDIMCI TASARIM FONKSİYONLARI ---
+    def create_button(self, text, bg_color, hover_color, text_color="white"):
+        btn = QPushButton(text)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Buton Stili (QSS)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg_color};
+                color: {text_color};
+                border-radius: 8px;
+                padding: 10px;
+                font-weight: bold;
+                font-size: 13px;
+                border: none;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_color};
+            }}
+            QPushButton:pressed {{
+                background-color: {bg_color};
+                padding-top: 12px; /* Basma efekti */
+            }}
+            QPushButton:disabled {{
+                background-color: #313244;
+                color: #585b70;
+            }}
+        """)
+        return btn
+
+    def customize_plot(self, plot_widget):
+        plot_widget.getAxis('left').setPen('#6c7086')
+        plot_widget.getAxis('bottom').setPen('#6c7086')
+        plot_widget.addLegend(offset=(10, 10))
+        plot_widget.setStyleSheet("border: 1px solid #313244; border-radius: 10px;")
+
+    # ----------------------------------------
+    # MANTIK FONKSİYONLARI (ESKİSİ İLE AYNI)
+    # ----------------------------------------
     def refresh_ports(self):
         self.combo_ports.clear()
         ports = serial.tools.list_ports.comports()
@@ -191,76 +304,61 @@ class ParkinsonGUI(QMainWindow):
 
     def toggle_connection(self):
         if self.worker is None:
-            # BAĞLAN
             port = self.combo_ports.currentText()
-            if not port:
-                return
-            
+            if not port: return
             self.worker = SerialWorker(port)
             self.worker.data_received.connect(self.update_plot)
             self.worker.start()
             
-            self.btn_connect.setText("KES")
-            self.btn_connect.setStyleSheet("background-color: #7f8c8d; font-weight: bold; padding: 10px;")
+            # Tasarım Güncellemesi
+            self.btn_connect.setText("BAĞLANTIYI KES")
+            self.btn_connect.setStyleSheet(self.btn_connect.styleSheet().replace("#a6e3a1", "#fab387")) # Turuncuya dön
             self.btn_record.setEnabled(True)
-            self.lbl_status.setText(f"Durum: {port} Bağlandı")
+            self.lbl_status.setText(f"BAĞLANDI: {port}")
+            self.lbl_status.setStyleSheet("color: #a6e3a1; font-weight: bold;")
         else:
-            # BAĞLANTIYI KES
             self.worker.stop()
             self.worker = None
-            self.btn_connect.setText("BAĞLAN")
-            self.btn_connect.setStyleSheet("background-color: #27ae60; font-weight: bold; padding: 10px;")
+            self.btn_connect.setText("CİHAZA BAĞLAN")
+            self.btn_connect.setStyleSheet(self.btn_connect.styleSheet().replace("#fab387", "#a6e3a1")) # Yeşile dön
             self.btn_record.setEnabled(False)
-            self.lbl_status.setText("Durum: Bağlantı Kesildi")
+            self.lbl_status.setText("BAĞLANTI KESİLDİ")
+            self.lbl_status.setStyleSheet("color: #f38ba8; font-weight: bold;")
 
     def toggle_recording(self):
         if not self.is_recording:
-            # --- KAYDI BAŞLAT ---
             self.is_recording = True
-            self.recording_data = [] # Listeyi temizle
+            self.recording_data = []
             
             self.btn_record.setText("KAYDI BİTİR VE ANALİZ ET")
-            self.btn_record.setStyleSheet("background-color: #e67e22; font-weight: bold; padding: 10px;")
+            self.btn_record.setStyleSheet(self.btn_record.styleSheet().replace("#f38ba8", "#eba0ac")) # Rengi aç
             
-            # --- YENİ EKLENEN KISIM: HEDEF KLASÖR ---
-            # Kullanıcının istediği özel konum:
-            target_folder = r"D:\cihaz\VeriSeti_Tremor"
-
-            # Eğer Bradikinezi seçiliyse karışmaması için ayrı klasör yapalım mı? 
-            # (İstersen burayı silebilirsin, hepsini aynı yere atar)
-            if self.combo_mode.currentIndex() == 1:
+            target_folder = r"D:\cihaz\VeriSeti_Genel"
+            if self.combo_mode.currentIndex() == 0:
+                target_folder = r"D:\cihaz\VeriSeti_Tremor"
+            elif self.combo_mode.currentIndex() == 1:
                 target_folder = r"D:\cihaz\VeriSeti_Bradikinezi"
 
-            # Klasör yoksa otomatik oluştur
             if not os.path.exists(target_folder):
                 os.makedirs(target_folder)
             
-            # Dosya adını ve tam yolu oluştur
             mode_text = "tremor" if self.combo_mode.currentIndex() == 0 else "bradi"
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{mode_text}_{timestamp}.csv"
-            
-            # Tam dosya yolu (D:\cihaz\VeriSeti_Tremor\tremor_2025...csv)
             self.current_filename = os.path.join(target_folder, filename)
-            # ----------------------------------------
-
-            self.lbl_status.setText(f"Durum: Kaydediliyor... ({filename})")
+            
+            self.lbl_status.setText(f"KAYIT YAPILIYOR... {filename}")
+            self.lbl_status.setStyleSheet("color: #f38ba8; font-weight: bold; blink;") # Kırmızı
             
         else:
-            # --- KAYDI BİTİR ---
             self.is_recording = False
-            self.save_data_to_csv() # Artık D: sürücüsüne kaydedecek
-            
-            self.btn_record.setText("KAYIT BAŞLAT")
-            self.btn_record.setStyleSheet("background-color: #c0392b; font-weight: bold; padding: 10px;")
-            
-            # Analizi Tetikle
+            self.save_data_to_csv()
+            self.btn_record.setText("KAYDI BAŞLAT")
+            self.btn_record.setStyleSheet(self.btn_record.styleSheet().replace("#eba0ac", "#f38ba8"))
             self.run_analysis()
 
     def update_plot(self, data):
-        # Data: [ax, ay, az, gx, gy, gz]
-        
-        # 1. Grafikler için Buffer'a ekle
+        # Buffer işlemleri
         self.data_buffer['ax'].append(data[0])
         self.data_buffer['ay'].append(data[1])
         self.data_buffer['az'].append(data[2])
@@ -268,59 +366,46 @@ class ParkinsonGUI(QMainWindow):
         self.data_buffer['gy'].append(data[4])
         self.data_buffer['gz'].append(data[5])
 
-        # Buffer taşarsa eskileri sil
         for key in self.data_buffer:
             if len(self.data_buffer[key]) > self.buffer_size:
                 self.data_buffer[key].pop(0)
 
-        # 2. Grafikleri Güncelle
+        # Çizim
         self.curve_ax.setData(self.data_buffer['ax'])
         self.curve_ay.setData(self.data_buffer['ay'])
         self.curve_az.setData(self.data_buffer['az'])
-        
         self.curve_gx.setData(self.data_buffer['gx'])
         self.curve_gy.setData(self.data_buffer['gy'])
         self.curve_gz.setData(self.data_buffer['gz'])
 
-        # 3. Eğer Kayıt Modundaysak, veriyi listeye at
         if self.is_recording:
             self.recording_data.append(data)
 
     def save_data_to_csv(self):
-        if not self.recording_data:
-            return
-        
-        # Dosyayı kaydet
+        if not self.recording_data: return
         with open(self.current_filename, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"])
             writer.writerows(self.recording_data)
-        
-        self.lbl_status.setText(f"Durum: {self.current_filename} kaydedildi.")
+        self.lbl_status.setText("DOSYA KAYDEDİLDİ.")
 
     def run_analysis(self):
-        self.lbl_status.setText("Durum: Analiz Yapılıyor...")
-        QApplication.processEvents() # Arayüzün güncellenmesini sağla
-
+        self.lbl_status.setText("ANALİZ YAPILIYOR...")
+        QApplication.processEvents()
         try:
             if self.combo_mode.currentIndex() == 0:
-                # TREMOR ANALİZİ
-                analyze_tremor.analyze_final_report(self.current_filename)
-                msg = "Tremor Analizi Tamamlandı! Rapor PDF olarak oluşturuldu."
+                analyze_tremor.run_analysis(self.current_filename)
+                msg = "Tremor Analizi Tamamlandı!"
             else:
-                # BRADİKİNEZİ ANALİZİ
-                analyze_bradykinesia.analyze_bradykinesia_report(self.current_filename)
-                msg = "Bradikinezi Analizi Tamamlandı! Rapor PDF olarak oluşturuldu."
+                analyze_bradykinesia.run_analysis(self.current_filename)
+                msg = "Bradikinezi Analizi Tamamlandı!"
             
-            QMessageBox.information(self, "Analiz Bitti", msg)
-            self.lbl_status.setText("Durum: Hazır")
-
+            QMessageBox.information(self, "İşlem Başarılı", f"{msg}\nRapor klasöre kaydedildi.")
+            self.lbl_status.setText("HAZIR")
         except Exception as e:
-            QMessageBox.critical(self, "Hata", f"Analiz sırasında hata oluştu:\n{str(e)}")
+            QMessageBox.critical(self, "Hata", f"Analiz hatası: {str(e)}")
+            self.lbl_status.setText("HATA OLUŞTU")
 
-# ----------------------------------------
-# 3. UYGULAMAYI BAŞLAT
-# ----------------------------------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ParkinsonGUI()
