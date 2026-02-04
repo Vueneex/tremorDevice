@@ -1,1 +1,2 @@
-1e1e2e
+
+        line.setStyleSheet("color: #45475a; min-height: 1px;")
