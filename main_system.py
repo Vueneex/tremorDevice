@@ -11,7 +11,7 @@ import analyze_bradykinesia # Bredikinezi m1odülü
 SERIAL_PORT = 'COM10'   
 BAUD_RATE = 115200
 
-# KLASÖR AYARLARI (İstediğin Gibi Ayarlandı)
+
 TREMOR_FOLDER = r"D:\cihaz\VeriSeti_Tremor"
 BRADY_FOLDER = r"D:\cihaz\VeriSeti_Bradikinezi"
 

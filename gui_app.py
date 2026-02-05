@@ -13,7 +13,7 @@ import re # Dosya ismindeki yasaklı karakterleri temizlemek için
 # Arayüz Kütüphaneleri
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QComboBox, 
-                             QMessageBox, QFrame, QCheckBox, QLineEdit) # QLineEdit EKLENDİ
+                             QMessageBox, QFrame, QCheckBox, QLineEdit, QListWidget) 
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QFont, QColor
 
@@ -50,13 +50,14 @@ class SerialWorker(QThread):
                         parts = line.split(',')
                         if len(parts) == 6:
                             raw_data = [float(x) for x in parts]
-                            # Dönüşümler (MPU9250)
-                            ax = raw_data[0] / 16384.0
-                            ay = raw_data[1] / 16384.0
-                            az = raw_data[2] / 16384.0
-                            gx = raw_data[3] / 131.0
-                            gy = raw_data[4] / 131.0
-                            gz = raw_data[5] / 131.0
+                            
+                            ax = raw_data[0] 
+                            ay = raw_data[1] 
+                            az = raw_data[2] 
+                            gx = raw_data[3] 
+                            gy = raw_data[4] 
+                            gz = raw_data[5] 
+                            
                             self.data_received.emit([ax, ay, az, gx, gy, gz])
                     except ValueError:
                         pass
@@ -149,6 +150,46 @@ class ParkinsonGUI(QMainWindow):
         self.buffer_size = 300 
 
         self.init_ui()
+    
+    def update_file_lists(self):
+        """Klasördeki PDF dosyalarını bulur ve listeye ekler (En yeni en üstte)"""
+        self.list_tremor.clear()
+        self.list_bradi.clear()
+        
+        # Klasör Yolları
+        folder_tremor = r"D:\cihaz\VeriSeti_Tremor"
+        folder_bradi = r"D:\cihaz\VeriSeti_Bradikinezi"
+
+        # Tremor Dosyalarını Yükle
+        if os.path.exists(folder_tremor):
+            files = [f for f in os.listdir(folder_tremor) if f.endswith('.pdf')]
+            # Tarihe göre sırala (En yeni en başa)
+            files.sort(key=lambda x: os.path.getmtime(os.path.join(folder_tremor, x)), reverse=True)
+            self.list_tremor.addItems(files)
+
+        # Bradikinezi Dosyalarını Yükle
+        if os.path.exists(folder_bradi):
+            files = [f for f in os.listdir(folder_bradi) if f.endswith('.pdf')]
+            files.sort(key=lambda x: os.path.getmtime(os.path.join(folder_bradi, x)), reverse=True)
+            self.list_bradi.addItems(files)
+
+    def open_pdf_tremor(self, item):
+        """Tremor listesinden tıklanan dosyayı açar"""
+        folder = r"D:\cihaz\VeriSeti_Tremor"
+        filepath = os.path.join(folder, item.text())
+        try:
+            os.startfile(filepath) # Windows için dosya açma komutu
+        except Exception as e:
+            QMessageBox.warning(self, "Hata", f"Dosya açılamadı:\n{e}")
+
+    def open_pdf_bradi(self, item):
+        """Bradikinezi listesinden tıklanan dosyayı açar"""
+        folder = r"D:\cihaz\VeriSeti_Bradikinezi"
+        filepath = os.path.join(folder, item.text())
+        try:
+            os.startfile(filepath)
+        except Exception as e:
+            QMessageBox.warning(self, "Hata", f"Dosya açılamadı:\n{e}")
 
     def init_ui(self):
         central_widget = QWidget()
@@ -255,6 +296,51 @@ class ParkinsonGUI(QMainWindow):
         line_bottom.setFrameShape(QFrame.Shape.HLine)
         line_bottom.setStyleSheet("color: #45475a; min-height: 1px;")
         left_layout.addWidget(line_bottom)
+
+# --- ALT PANEL (Sıkıştırılmış Alan) ---
+        # Bu özel kutu sayesinde ana layout'un 15px boşluk kuralını eziyoruz.
+        bottom_container = QWidget()
+        bottom_layout = QVBoxLayout(bottom_container)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(5) 
+        
+        # 2. Tremor Listesi
+        lbl_list_tremor = QLabel("📂 Son Tremor Raporları")
+        lbl_list_tremor.setStyleSheet("color: #89b4fa; font-size: 11px; font-weight: bold;")
+        bottom_layout.addWidget(lbl_list_tremor)
+
+        self.list_tremor = QListWidget()
+        self.list_tremor.setFixedHeight(80) # Yüksekliği biraz azalttım, daha kibar dursun
+        self.list_tremor.setStyleSheet("""
+            QListWidget {
+                background-color: #313244;
+                border: 1px solid #45475a;
+                border-radius: 5px;
+                color: #cdd6f4;
+                font-size: 10px;
+            }
+            QListWidget::item:hover { background-color: #45475a; }
+        """)
+        self.list_tremor.itemDoubleClicked.connect(self.open_pdf_tremor)
+        bottom_layout.addWidget(self.list_tremor)
+
+        # 3. Bradikinezi Listesi
+        lbl_list_bradi = QLabel("📂 Son Bradikinezi Raporları")
+        lbl_list_bradi.setStyleSheet("color: #fab387; font-size: 11px; font-weight: bold; margin-top: 10px;")
+        bottom_layout.addWidget(lbl_list_bradi)
+
+        self.list_bradi = QListWidget()
+        self.list_bradi.setFixedHeight(80)
+        self.list_bradi.setStyleSheet(self.list_tremor.styleSheet())
+        self.list_bradi.itemDoubleClicked.connect(self.open_pdf_bradi)
+        bottom_layout.addWidget(self.list_bradi)
+        
+        # Bu özel kutuyu ana panele ekle
+        left_layout.addWidget(bottom_container)
+
+        # Program açılınca listeleri doldur
+        self.update_file_lists()
+        # ---------------------------------------
 
         left_layout.addStretch()
         
@@ -404,17 +490,20 @@ class ParkinsonGUI(QMainWindow):
             self.run_analysis()
 
     def update_plot(self, data):
-        self.data_buffer['ax'].append(data[0])
-        self.data_buffer['ay'].append(data[1])
-        self.data_buffer['az'].append(data[2])
-        self.data_buffer['gx'].append(data[3])
-        self.data_buffer['gy'].append(data[4])
-        self.data_buffer['gz'].append(data[5])
+        self.data_buffer['ax'].append(data[0] / 16384.0)
+        self.data_buffer['ay'].append(data[1] / 16384.0)
+        self.data_buffer['az'].append(data[2] / 16384.0)
+        
+        self.data_buffer['gx'].append(data[3] / 131.0)
+        self.data_buffer['gy'].append(data[4] / 131.0)
+        self.data_buffer['gz'].append(data[5] / 131.0)
 
+        # Buffer taşarsa temizle
         for key in self.data_buffer:
             if len(self.data_buffer[key]) > self.buffer_size:
                 self.data_buffer[key].pop(0)
 
+        # Çizim (Grafikler bölünmüş veriyi gösterir)
         self.curve_ax.setData(self.data_buffer['ax'])
         self.curve_ay.setData(self.data_buffer['ay'])
         self.curve_az.setData(self.data_buffer['az'])
@@ -422,9 +511,11 @@ class ParkinsonGUI(QMainWindow):
         self.curve_gy.setData(self.data_buffer['gy'])
         self.curve_gz.setData(self.data_buffer['gz'])
 
+        # --- KRİTİK KISIM BURASI ---
+        # Kayıt listesine (CSV'ye gidecek olana) HAM veriyi ('data') ekliyoruz.
+        # Bölünmüş halini DEĞİL.
         if self.is_recording:
             self.recording_data.append(data)
-
     def save_data_to_csv(self):
         if not self.recording_data: return
         with open(self.current_filename, 'w', newline='') as f:
@@ -459,6 +550,8 @@ class ParkinsonGUI(QMainWindow):
             
             QMessageBox.information(self, "İşlem Başarılı", msg)
             self.lbl_status.setText("HAZIR")
+
+            self.update_file_lists()
 
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Analiz hatası: {str(e)}")

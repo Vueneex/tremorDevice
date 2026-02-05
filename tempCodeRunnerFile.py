@@ -1,2 +1,2 @@
 
-        line.setStyleSheet("color: #45475a; min-height: 1px;")
+        lbl_list_tremor = QLabel("📂 Son Tremor Raporları")

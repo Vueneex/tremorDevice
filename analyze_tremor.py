@@ -24,7 +24,7 @@ warnings.filterwarnings("ignore")
 
 # --- AYARLAR ---
 FS = 50.0               # Örnekleme Frekansı
-TREMOR_BAND = (3.0, 12.0) # Genişletilmiş Tremor Aralığı (Hz)
+TREMOR_BAND = (1.0, 12.0) # Genişletilmiş Tremor Aralığı (Hz)
 ACC_SCALE_FACTOR = 16384.0 # LSB to g (Sensör ayarına göre değişebilir, genelde 16384)
 
 # Renk Paleti
@@ -61,24 +61,48 @@ def calculate_fft_dominant(signal, fs):
 
 def calculate_updrs_tremor(peak_acc_g, dominant_freq):
     """
-    MDS-UPDRS Bölüm III, Madde 3.15-3.17 (Postüral/Kinetik Tremor) Puanlama.
-    İvme (g) cinsinden ampirik dönüşüm tablosu kullanır.
+    MDS-UPDRS - KESİN SONUÇLU VERSİYON
+    Normal hareketlerde ve belirsiz durumlarda ısrarla 'NORMAL (0)' döndürür.
     """
-    # Gürültü eşiği (Çok düşük frekans veya genlik)
-    if peak_acc_g < 0.015 or dominant_freq < 3.0:
-        return 0, "NORMAL (0) - Titreme Yok"
+    
+    # ---------------------------------------------------------
+    # 1. FREKANS VE İSTEMLİ HAREKET FİLTRESİ
+    # ---------------------------------------------------------
+    # Frekans 4 Hz'den küçükse (Su içme, el kaldırma vb.), 
+    # ivme ne kadar büyük olursa olsun bu Parkinson değildir.
+    if dominant_freq < 4.0:
+        return 0, f"NORMAL - İstemli Hareket ({dominant_freq:.1f} Hz)"
 
-    # UPDRS Kriterleri (g cinsinden yaklaşık karşılıklar)
+    # ---------------------------------------------------------
+    # 2. GÜRÜLTÜ FİLTRESİ
+    # ---------------------------------------------------------
+    # Yerçekiminin %4'ünden küçük titreşimler 'Gürültü'dür.
+    NOISE_LIMIT = 0.025 
+    if peak_acc_g < NOISE_LIMIT:
+        return 0, "NORMAL (0) - Hareket Yok"
+
+    # ---------------------------------------------------------
+    # 3. SAĞLIKLI İNSAN TİTREMESİ (FİZYOLOJİK)
+    # ---------------------------------------------------------
+    # Çok hızlı (8-12 Hz) ama küçük titreşimler normaldir.
+    if dominant_freq > 7.5 and peak_acc_g < 0.15:
+        return 0, f"NORMAL - Fizyolojik Titreme ({dominant_freq:.1f} Hz)"
+
+    # ---------------------------------------------------------
+    # 4. PARKİNSON PUANLAMASI (MDS-UPDRS)
+    # ---------------------------------------------------------
+    
     if peak_acc_g > 0.30:
-        return 4, f"ŞİDDETLİ (4) - Genlik >10cm ({dominant_freq:.1f} Hz)"
+        return 4, f"ŞİDDETLİ (4) - ({dominant_freq:.1f} Hz)"
     elif peak_acc_g > 0.10:
-        return 3, f"ORTA-CİDDİ (3) - Genlik 3-10cm ({dominant_freq:.1f} Hz)"
-    elif peak_acc_g > 0.05:
-        return 2, f"ORTA (2) - Genlik 1-3cm ({dominant_freq:.1f} Hz)"
-    elif peak_acc_g >= 0.015:
-        return 1, f"HAFİF (1) - Genlik <1cm ({dominant_freq:.1f} Hz)"
+        return 3, f"ORTA-CİDDİ (3) - ({dominant_freq:.1f} Hz)"
+    elif peak_acc_g > 0.06:
+        return 2, f"ORTA (2) - ({dominant_freq:.1f} Hz)"
+        
+    elif peak_acc_g > 0.03: 
+        return 1, f"HAFİF (1) - ({dominant_freq:.1f} Hz)"
     else:
-        return 0, "NORMAL (0) - Titreme Yok"
+        return 0, "NORMAL (0) - Belirsiz"
 
 def draw_score_bar(ax, label, score, y_pos, color, inverse=False):
     """Yatay performans skor çubuğu çizer."""
@@ -95,7 +119,6 @@ def draw_score_bar(ax, label, score, y_pos, color, inverse=False):
 # =========================================================
 # 📊 ANA ANALİZ FONKSİYONU (main_system.py tarafından çağrılır)
 # =========================================================
-# Bu fonksiyonu kopyala ve analyze_tremor.py içindeki eski run_analysis ile değiştir.
 
 def run_analysis(file_path):
     print(f"\n{'='*60}")
@@ -209,8 +232,9 @@ def run_analysis(file_path):
             freq_color = "#c0392b" if (4.0 <= dominant_freq <= 7.0 and updrs_score > 0) else "#2980b9"
             
             # Sayfanın altına yerleştir (Performans karnesinin hemen üstüne)
-            fig.text(0.5, 0.18, f"🔍 TESPİT EDİLEN BASKIN FREKANS: {dominant_freq:.1f} Hz", 
-                     ha='center', va='center', fontsize=12, fontweight='bold', color='white',
+            freq_color = "#c0392b" if (4.0 <= dominant_freq <= 7.0 and updrs_score > 0) else "#2980b9"
+            fig.text(0.60, 0.18, f"BASKIN FREKANS: {dominant_freq:.1f} Hz", 
+                     ha='right', va='center', fontsize=12, fontweight='bold', color='white',
                      bbox=dict(facecolor=freq_color, edgecolor='none', boxstyle='round,pad=0.4'))
 
             # --- PERFORMANS KARNESİ ---
