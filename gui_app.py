@@ -261,7 +261,7 @@ class ParkinsonGUI(QMainWindow):
         lbl_analysis.setStyleSheet("color: #6c7086; font-weight: bold; letter-spacing: 1px;")
         left_layout.addWidget(lbl_analysis)
 
-        # Mod Seçimi
+        # Mod Seçim
         self.combo_mode = QComboBox()
         self.combo_mode.addItems(["1. Tremor (Titreme)", "2. Bradikinezi (Yavaşlık)"])
         left_layout.addWidget(self.combo_mode)

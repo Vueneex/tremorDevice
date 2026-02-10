@@ -116,9 +116,9 @@ def draw_score_bar(ax, label, score, y_pos, color, inverse=False):
     # Skor yazısı
     ax.text(0.97, y_pos, f"%{int(final_score)}", fontsize=11, fontweight='bold', va='center', ha='right', color=color)
 
-# =========================================================
+# ========================================================
 # 📊 ANA ANALİZ FONKSİYONU (main_system.py tarafından çağrılır)
-# =========================================================
+# ========================================================
 
 def run_analysis(file_path):
     print(f"\n{'='*60}")
