@@ -561,4 +561,9 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ParkinsonGUI()
     window.show()
+    # Ensure the window is brought to the foreground on start.
+    window.raise_()
+    window.activateWindow()
+    QTimer.singleShot(0, window.raise_)
+    QTimer.singleShot(0, window.activateWindow)
     sys.exit(app.exec())
