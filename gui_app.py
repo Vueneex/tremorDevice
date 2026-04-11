@@ -299,7 +299,7 @@ class ParkinsonGUI(QMainWindow):
         left_layout.addWidget(line)
 
         lbl_device = QLabel("CİHAZ BAĞLANTISI")
-        lbl_device.setStyleSheet("color: #2980B9; font-weight: bold; margin-left: 5px;")
+        lbl_device.setStyleSheet("color: #2980B9; font-weight: bold; margin-left: 1px;")
         left_layout.addWidget(lbl_device)
 
         port_row = QHBoxLayout()
@@ -315,6 +315,9 @@ class ParkinsonGUI(QMainWindow):
         self.btn_connect.clicked.connect(self.toggle_connection)
         left_layout.addWidget(self.btn_connect)
 
+        lbl_battery = QLabel("Batarya Durumu")
+        lbl_battery.setStyleSheet("color: #2980B9; font-size: 13px; font-weight: bold; margin-top: 10px; margin-left: 1px;")
+        left_layout.addWidget(lbl_battery)
         self.prog_battery = QProgressBar()
         self.prog_battery.setRange(0, 100)
         self.prog_battery.setValue(0)
