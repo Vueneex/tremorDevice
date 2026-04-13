@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QFileDialog, QTabWidget, QSpinBox, QDateEdit, QTimeEdit,
                              QTableWidget, QTableWidgetItem, QDateTimeEdit, QListWidgetItem,
                              QScrollArea, QFormLayout, QDoubleSpinBox, QProgressBar,
-                             QTextEdit, QGroupBox, QGridLayout, QDialog, QMenu, QStackedWidget) 
+                             QTextEdit, QGroupBox, QGridLayout, QDialog, QMenu, QStackedWidget, QTextBrowser) 
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt, QSettings
 from PyQt6.QtGui import QFont, QColor, QAction
 
@@ -159,7 +159,7 @@ class ParkinsonGUI(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("NeuroMotion Analiz - Medikal Prototip v4.7")
+        self.setWindowTitle("NeuroMotion Analiz - Medikal Prototip v4.8")
         self.resize(1450, 950)
         
         self.plot_counter = 0 
@@ -175,7 +175,6 @@ class ParkinsonGUI(QMainWindow):
             QFrame#ControlPanel { background-color: #FFFFFF; border-radius: 10px; border: 1px solid #E0E6ED; }
             QFrame#Header { background-color: #2980B9; border-bottom: 3px solid #1ABC9C; }
             QLabel#HeaderTitle { font-size: 22px; font-weight: bold; color: #FFFFFF; }
-            QLabel#StatusLabel { font-weight: bold; color: #F1C40F; }
             QTabWidget::pane { border: 1px solid #E0E6ED; background: #FFFFFF; border-radius: 5px; }
             QTabBar::tab { background-color: #ECF0F1; color: #7F8C8D; padding: 10px 20px; border: 1px solid #E0E6ED; font-weight: bold; }
             QTabBar::tab:selected { background-color: #FFFFFF; color: #2980B9; border-bottom: 3px solid #2980B9; }
@@ -218,14 +217,12 @@ class ParkinsonGUI(QMainWindow):
         header_frame = QFrame()
         header_frame.setObjectName("Header")
         header_layout = QHBoxLayout(header_frame)
-        header_title = QLabel(" Klinik Hasta Yönetimi")
+        header_title = QLabel("🩺 Klinik Hasta Yönetimi")
         header_title.setObjectName("HeaderTitle")
         header_layout.addWidget(header_title)
-        #self.lbl_status = QLabel("SİSTEM HAZIR")
-        #self.lbl_status.setObjectName("StatusLabel")
-        #self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignRight)
-        #header_layout.addWidget(self.lbl_status)
-        #main_layout.addWidget(header_frame)
+        
+        # Sistem Hazır yazısı tamamen silindi
+        main_layout.addWidget(header_frame)
 
         content_layout = QHBoxLayout()
         left_panel = self._create_left_panel()
@@ -234,6 +231,7 @@ class ParkinsonGUI(QMainWindow):
         main_tabs = QTabWidget()
         main_tabs.addTab(self._create_recording_tab(), " Kayıt & Stimülasyon")
         main_tabs.addTab(self._create_patient_management_tab(), " Rapor Yönetimi")
+        main_tabs.addTab(self._create_patient_database_tab(), " Kayıtlı Hastalar") # YENİ PANEL
         main_tabs.addTab(self._create_add_patient_tab(), "➕ Yeni Hasta Kaydı")
         
         content_layout.addWidget(main_tabs, 1)
@@ -287,7 +285,7 @@ class ParkinsonGUI(QMainWindow):
         self.txt_patient_history.setStyleSheet("background-color: #F8F9F9; color: #2C3E50; font-size: 12px;")
         left_layout.addWidget(self.txt_patient_history)
 
-        self.btn_delete_patient = self.create_button(" Hastayı Sil", "#E74C3C", "#C0392B")
+        self.btn_delete_patient = self.create_button("🗑️ Hastayı Sil", "#E74C3C", "#C0392B")
         self.btn_delete_patient.setEnabled(False)
         self.btn_delete_patient.clicked.connect(self.delete_patient_action)
         left_layout.addWidget(self.btn_delete_patient)
@@ -352,7 +350,7 @@ class ParkinsonGUI(QMainWindow):
         lbl_view_title.setStyleSheet("font-weight: bold; color: #7F8C8D;")
         top_bar.addWidget(lbl_view_title)
         
-        top_bar.addStretch() # Butonları sağa (kayıt butonunun hizasına) yaslar
+        top_bar.addStretch() 
         
         self.btn_view1 = self.create_button("1", "#3498DB", "#2980B9", text_color="#FFFFFF")
         self.btn_view2 = self.create_button("2", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
@@ -403,7 +401,7 @@ class ParkinsonGUI(QMainWindow):
         page2_layout = QVBoxLayout(page2)
         page2_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.plot_stim = pg.PlotWidget(title=" Terapötik Stimülasyon (Canlı Osiloskop)")
+        self.plot_stim = pg.PlotWidget(title="⚡ Terapötik Stimülasyon (Canlı Osiloskop)")
         self.plot_stim.showGrid(x=True, y=True, alpha=0.5)
         self.plot_stim.setBackground('#111111') 
         self.plot_stim.getAxis('left').setPen('#2ECC71')
@@ -465,6 +463,56 @@ class ParkinsonGUI(QMainWindow):
         layout.addStretch()
         return tab
 
+    def _create_patient_database_tab(self):
+        """Tüm hastaların detaylı görüntülendiği yeni bilgi bankası sekmesi"""
+        tab = QWidget()
+        layout = QHBoxLayout(tab)
+
+        # SOL TARAF: Arama ve Liste
+        search_side = QVBoxLayout()
+        lbl_list_title = QLabel(" KAYITLI HASTALAR")
+        lbl_list_title.setStyleSheet("font-weight: bold; color: #2980B9;")
+        search_side.addWidget(lbl_list_title)
+
+        self.db_search_input = QLineEdit()
+        self.db_search_input.setPlaceholderText("İsim veya protokol ile hızlı ara...")
+        self.db_search_input.textChanged.connect(self.search_in_database_tab)
+        search_side.addWidget(self.db_search_input)
+
+        self.db_patient_list = QListWidget()
+        self.db_patient_list.setStyleSheet("QListWidget { border: 1px solid #D5D8DC; border-radius: 8px; }")
+        self.db_patient_list.itemClicked.connect(self.display_full_patient_info)
+        search_side.addWidget(self.db_patient_list)
+        
+        layout.addLayout(search_side, 1)
+
+        # SAĞ TARAF: Detaylı Bilgi Kartı
+        self.detail_card = QGroupBox("HASTA AYRINTILI DOSYASI")
+        self.detail_card.setStyleSheet("QGroupBox { font-size: 15px; background-color: #FFFFFF; }")
+        card_layout = QVBoxLayout(self.detail_card)
+
+        self.txt_full_details = QTextBrowser()
+        self.txt_full_details.setOpenExternalLinks(False)
+        self.txt_full_details.anchorClicked.connect(self.open_report_from_link)
+        self.txt_full_details.anchorClicked.connect(self.open_report_from_link) 
+        self.txt_full_details.setReadOnly(True)
+        self.txt_full_details.setStyleSheet("""
+            QTextEdit { 
+                background-color: #FDFEFE; 
+                border: none; 
+                font-family: 'Consolas', 'Monospace'; 
+                font-size: 14px; 
+                line-height: 150%;
+                color: #2C3E50;
+            }
+        """)
+        card_layout.addWidget(self.txt_full_details)
+        
+        layout.addWidget(self.detail_card, 2)
+        
+        QTimer.singleShot(100, self.refresh_db_tab_list)
+        return tab
+
     def _create_add_patient_tab(self):
         tab = QWidget(); layout = QVBoxLayout(tab)
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
@@ -501,8 +549,131 @@ class ParkinsonGUI(QMainWindow):
 
     # ---------------- FONKSİYONLAR ----------------
 
+    def refresh_db_tab_list(self):
+        self.db_patient_list.clear()
+        for patient in self.db.get_all_patients():
+            self.db_patient_list.addItem(patient)
+
+    def search_in_database_tab(self):
+        txt = self.db_search_input.text().lower()
+        self.db_patient_list.clear()
+        for p in self.db.get_all_patients():
+            if txt in p.lower():
+                self.db_patient_list.addItem(p)
+
+    def display_full_patient_info(self, item):
+        patient_name = item.text()
+        details = self.db.get_patient_details(patient_name)
+        
+        if details:
+            # 1. KLİNİK ÖYKÜYÜ OKUMA
+            history_content = "<i>Kayıtlı öykü bulunamadı.</i>"
+            history_file = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", patient_name, "oyku.txt")
+            if os.path.exists(history_file):
+                with open(history_file, 'r', encoding='utf-8') as f:
+                    history_content = f.read().replace('\n', '<br>')
+
+            # 2. GEÇMİŞ RAPORLARI DİNAMİK OLARAK TARAMA VE SIRALAMA
+            p_folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", patient_name)
+            t_folder = os.path.join(p_folder, "VeriSeti_Tremor")
+            b_folder = os.path.join(p_folder, "VeriSeti_Bradikinezi")
+            
+            reports = []
+            
+            # Tremor Raporlarını Bul
+            if os.path.exists(t_folder):
+                for f in os.listdir(t_folder):
+                    if f.endswith(('.pdf', '.csv')):
+                        file_path = os.path.join(t_folder, f)
+                        reports.append({'file': f, 'type': 'Tremor Analizi', 'time': os.path.getmtime(file_path)})
+                        
+            # Bradikinezi Raporlarını Bul
+            if os.path.exists(b_folder):
+                for f in os.listdir(b_folder):
+                    if f.endswith(('.pdf', '.csv')):
+                        file_path = os.path.join(b_folder, f)
+                        reports.append({'file': f, 'type': 'Bradikinezi Analizi', 'time': os.path.getmtime(file_path)})
+                        
+            # Tarihe göre en yeniden en eskiye sırala
+            reports.sort(key=lambda x: x['time'], reverse=True)
+            
+            # Raporları HTML Tablo Satırlarına Dönüştür
+            report_rows_html = ""
+            if reports:
+                for r in reports:
+                    date_str = datetime.fromtimestamp(r['time']).strftime('%d.%m.%Y - %H:%M')
+                    # DOSYA YOLUNU LİNK OLARAK GÖMÜYORUZ
+                    file_url = f"file:///{p_folder}/{'VeriSeti_Tremor' if r['type'] == 'Tremor Analizi' else 'VeriSeti_Bradikinezi'}/{r['file']}".replace("\\", "/")
+                    
+                    report_rows_html += f"""
+                        <tr>
+                            <td style="padding: 6px; border-bottom: 1px solid #ECF0F1; color: #34495E;">{date_str}</td>
+                            <td style="padding: 6px; border-bottom: 1px solid #ECF0F1; font-weight: bold; color: #2980B9;">{r['type']}</td>
+                            <td style="padding: 6px; border-bottom: 1px solid #ECF0F1;">
+                                <a href="{file_url}" style="color: #E67E22; text-decoration: none; font-weight: bold;">📂 {r['file']}</a>
+                            </td>
+                        </tr>
+                    """
+
+            # 3. HTML TASARIMINI BİRLEŞTİRME
+            info_html = f"""
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #2C3E50;">
+                
+                <h3 style="color: #2980B9; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">
+                     GENEL KİMLİK BİLGİLERİ
+                </h3>
+                <table style="width: 100%; font-size: 14px; margin-bottom: 20px;">
+                    <tr><td style="width: 120px; font-weight: bold; color: #7F8C8D;">Protokol No:</td><td>{details.get('protocol_no', '-')}</td></tr>
+                    <tr><td style="font-weight: bold; color: #7F8C8D;">Hasta Adı:</td><td style="font-weight: bold; color: #27AE60;">{patient_name}</td></tr>
+                    <tr><td style="font-weight: bold; color: #7F8C8D;">Yaş / Cinsiyet:</td><td>{details.get('age', '-')} / {details.get('gender', '-')}</td></tr>
+                    <tr><td style="font-weight: bold; color: #7F8C8D;">İletişim:</td><td>{details.get('contact_phone', '-')}</td></tr>
+                </table>
+
+                <h3 style="color: #E67E22; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">
+                     KLİNİK DURUM VE TANI
+                </h3>
+                <table style="width: 100%; font-size: 14px; margin-bottom: 20px;">
+                    <tr><td style="width: 120px; font-weight: bold; color: #7F8C8D;">Tanı Grubu:</td><td><b>{details.get('diagnosis', '-')}</b></td></tr>
+                    <tr><td style="font-weight: bold; color: #7F8C8D;">Baskın Taraf:</td><td>{details.get('dominant_side', '-')}</td></tr>
+                    <tr><td style="font-weight: bold; color: #7F8C8D;">Başlangıç Yılı:</td><td>{details.get('onset_year', '-')}</td></tr>
+                    <tr><td style="font-weight: bold; color: #7F8C8D;">Sorumlu Hekim:</td><td>{details.get('doctor_name', '-')}</td></tr>
+                </table>
+
+                <h3 style="color: #8E44AD; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">
+                    KLİNİK ÖYKÜ VE NOTLAR
+                </h3>
+                <div style="background-color: #F4F6F9; padding: 10px; border-radius: 5px; border-left: 4px solid #8E44AD; font-size: 13px; line-height: 1.5; margin-bottom: 20px;">
+                    {history_content}
+                </div>
+                
+                <h3 style="color: #16A085; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">
+                     GEÇMİŞ KLİNİK RAPORLAR VE TESTLER
+                </h3>
+                <table style="width: 100%; font-size: 13px; text-align: left; border-collapse: collapse;">
+                    <tr style="background-color: #ECF0F1; color: #2C3E50;">
+                        <th style="padding: 6px; border-bottom: 2px solid #BDC3C7; width: 130px;">Kayıt Tarihi</th>
+                        <th style="padding: 6px; border-bottom: 2px solid #BDC3C7; width: 130px;">Analiz Türü</th>
+                        <th style="padding: 6px; border-bottom: 2px solid #BDC3C7;">Dosya Adı</th>
+                    </tr>
+                    {report_rows_html}
+                </table>
+
+            </div>
+            """
+            self.txt_full_details.setHtml(info_html)
+            
+    def open_report_from_link(self, url):
+        """HTML içindeki dosya linkine tıklandığında dosyayı açar"""
+        file_path = url.toLocalFile()
+        if os.path.exists(file_path):
+            try:
+                os.startfile(file_path)
+            except Exception as e:
+                print(f"Dosya açma hatası: {e}")
+        else:
+            QMessageBox.warning(self, "Hata", "Dosya fiziksel olarak bulunamadı!")
+
     def switch_graph_view(self, index):
-        """1, 2, 3 butonlarına tıklandığında aktif ekranı değiştirir"""
         self.graph_stack.setCurrentIndex(index)
         
         default_style = "QPushButton { background-color: #ECF0F1; color: #2C3E50; border-radius: 6px; font-weight: bold; font-size: 14px; border: 1px solid #BDC3C7; }"
@@ -513,32 +684,25 @@ class ParkinsonGUI(QMainWindow):
         self.btn_view3.setStyleSheet(active_style if index == 2 else default_style)
 
     def toggle_stimulation_mock(self):
-        """Osiloskop (Yapay Elektrik) sinyalini başlatır/durdurur"""
         if not self.current_patient:
             QMessageBox.warning(self, "Uyarı", "Lütfen önce bir hasta seçin!")
             return
             
         if not self.is_stimulating:
-            # SİNYALİ BAŞLAT
             self.is_stimulating = True
             self.stim_phase = 0 
             self.osc_timer.start(30) 
             self.btn_apply_stim.setText(" SİNYALİ DURDUR")
             self.btn_apply_stim.setStyleSheet("QPushButton { background-color: #E74C3C; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
-            
             self.switch_graph_view(1)
-            self.lbl_status.setText(" SİNYAL GÖNDERİLİYOR...")
         else:
-            # SİNYALİ DURDUR
             self.is_stimulating = False
             self.osc_timer.stop()
             self.curve_stim.setData([], []) 
-            self.btn_apply_stim.setText("SİNYALİ BAŞLAT")
+            self.btn_apply_stim.setText(" SİNYALİ BAŞLAT")
             self.btn_apply_stim.setStyleSheet("QPushButton { background-color: #1ABC9C; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
-            self.lbl_status.setText("SİSTEM HAZIR")
 
     def update_oscilloscope(self):
-        """Matematiksel olarak gerçekçi bir Kare Dalga (TENS Sinyali) oluşturur"""
         if not self.is_stimulating:
             return
             
@@ -562,7 +726,7 @@ class ParkinsonGUI(QMainWindow):
         item = self.list_patients.itemAt(pos)
         if item is None: return
         menu = QMenu(self)
-        update_action = QAction("Bilgileri Güncelle", self)
+        update_action = QAction(" Bilgileri Güncelle", self)
         update_action.triggered.connect(lambda: self.open_update_dialog(item.text()))
         menu.addAction(update_action)
         menu.exec(self.list_patients.viewport().mapToGlobal(pos))
@@ -585,6 +749,7 @@ class ParkinsonGUI(QMainWindow):
             if new_data['history'] or new_data['history'] == "":
                 with open(history_file, 'w', encoding='utf-8') as f: f.write(new_data['history'])
             self.refresh_patient_list()
+            self.refresh_db_tab_list()
 
     def refresh_patient_list(self):
         self.list_patients.clear()
@@ -622,7 +787,9 @@ class ParkinsonGUI(QMainWindow):
             os.makedirs(os.path.join(p_folder, "VeriSeti_Tremor"), exist_ok=True)
             os.makedirs(os.path.join(p_folder, "VeriSeti_Bradikinezi"), exist_ok=True)
             with open(os.path.join(p_folder, "oyku.txt"), 'w', encoding='utf-8') as f: f.write(self.txt_new_history.toPlainText())
-            self.clear_patient_form(); self.refresh_patient_list()
+            self.clear_patient_form()
+            self.refresh_patient_list()
+            self.refresh_db_tab_list()
         else: QMessageBox.warning(self, "Hata", "Kayıt mevcut!")
 
     def delete_patient_action(self):
@@ -631,7 +798,9 @@ class ParkinsonGUI(QMainWindow):
             try:
                 self.db.delete_patient(self.current_patient)
                 shutil.rmtree(os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient), ignore_errors=True)
-                self.current_patient = None; self.refresh_patient_list()
+                self.current_patient = None
+                self.refresh_patient_list()
+                self.refresh_db_tab_list()
             except: pass
 
     def clear_patient_form(self):
@@ -656,7 +825,6 @@ class ParkinsonGUI(QMainWindow):
             folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient, f"VeriSeti_{self.current_mode}")
             os.makedirs(folder, exist_ok=True)
             self.current_filename = os.path.join(folder, f"{self.current_patient}_{self.current_mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-            self.lbl_status.setText(f"KAYITTA: {self.current_mode.upper()}")
         else:
             self.is_recording = False; self.btn_record.setText("KAYDI BAŞLAT")
             self.save_data_to_csv(); self.run_analysis(); self.update_patient_records()
@@ -715,7 +883,6 @@ class ParkinsonGUI(QMainWindow):
     def run_analysis(self):
         if not getattr(self, 'current_filename', '') or not os.path.exists(self.current_filename): return
         try:
-            self.lbl_status.setText(f"ANALİZ EDİLİYOR...")
             QApplication.processEvents() 
             
             if self.current_mode == "Tremor":
@@ -725,7 +892,6 @@ class ParkinsonGUI(QMainWindow):
                 import analyze_bradykinesia
                 analyze_bradykinesia.run_analysis(self.current_filename)
 
-            self.lbl_status.setText("SİSTEM HAZIR")
             QApplication.processEvents()
             QMessageBox.information(self, "Başarılı", "Analiz tamamlandı.")
         except Exception as e:
