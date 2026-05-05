@@ -14,21 +14,19 @@ import importlib
 import json
 from database import TestDatabase
 
-# Arayüz Kütüphaneleri (QStackedWidget eklendi)
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QComboBox, 
                              QMessageBox, QFrame, QCheckBox, QLineEdit, QListWidget,
                              QFileDialog, QTabWidget, QSpinBox, QDateEdit, QTimeEdit,
                              QTableWidget, QTableWidgetItem, QDateTimeEdit, QListWidgetItem,
                              QScrollArea, QFormLayout, QDoubleSpinBox, QProgressBar,
-                             QTextEdit, QGroupBox, QGridLayout, QDialog, QMenu, QStackedWidget, QTextBrowser) 
+                             QTextEdit, QTextBrowser, QGroupBox, QGridLayout, QDialog, QMenu, QStackedWidget) 
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt, QSettings
 from PyQt6.QtGui import QFont, QColor, QAction
 
-# Grafik Kütüphanesi
 import pyqtgraph as pg
 
-# DALGALARI PÜRÜZSÜZ (YUMUŞAK) ÇİZMEK İÇİN ANTIALIASING AÇILDI
+# DALGALARI PÜRÜZSÜZ ÇİZMEK İÇİN
 pg.setConfigOptions(antialias=True) 
 try:
     pg.setConfigOptions(useOpenGL=True) 
@@ -37,13 +35,8 @@ except:
 pg.setConfigOption('background', '#FFFFFF')
 pg.setConfigOption('foreground', '#2C3E50')
 
-# Analiz Modülleri
-ANALYSIS_AVAILABLE = None
-analyze_tremor = None
-analyze_bradykinesia = None
-
 # ----------------------------------------
-# 1. ARKA PLAN İŞÇİSİ (SERIAL WORKER)
+# 1. ARKA PLAN İŞÇİSİ (SERIAL WORKER) - ÇOKLU SENSÖR
 # ----------------------------------------
 class SerialWorker(QThread):
     data_received = pyqtSignal(list)
@@ -63,11 +56,28 @@ class SerialWorker(QThread):
                     try:
                         line = self.serial_conn.readline().decode('utf-8', errors='ignore').strip()
                         parts = line.split(',')
+                        
                         if len(parts) >= 6: 
                             raw_data = [float(x) for x in parts]
                             battery_val = raw_data[6] if len(parts) >= 7 else 0.0 
-                            self.data_received.emit([raw_data[0], raw_data[1], raw_data[2], 
-                                                   raw_data[3], raw_data[4], raw_data[5], battery_val])
+                            
+                            # 12 SENSÖR SİMÜLASYONU
+                            base_sensor = [raw_data[0], raw_data[1], raw_data[2], raw_data[3], raw_data[4], raw_data[5]]
+                            multi_sensor_data = []
+                            for i in range(12):
+                                if i == 0:
+                                    multi_sensor_data.extend(base_sensor)
+                                else:
+                                    noise_acc = np.random.normal(0, 500, 3).tolist()
+                                    noise_gyro = np.random.normal(0, 10, 3).tolist()
+                                    multi_sensor_data.extend([
+                                        base_sensor[0] + noise_acc[0], base_sensor[1] + noise_acc[1], base_sensor[2] + noise_acc[2],
+                                        base_sensor[3] + noise_gyro[0], base_sensor[4] + noise_gyro[1], base_sensor[5] + noise_gyro[2]
+                                    ])
+                            
+                            multi_sensor_data.append(battery_val)
+                            self.data_received.emit(multi_sensor_data)
+                            
                     except (ValueError, IndexError):
                         pass
                 else:
@@ -82,6 +92,7 @@ class SerialWorker(QThread):
         self.is_running = False
         self.quit()
         self.wait(500)
+
 
 # ----------------------------------------
 # HASTA GÜNCELLEME PENCERESİ (DIALOG)
@@ -131,7 +142,7 @@ class UpdatePatientDialog(QDialog):
         layout.addLayout(form_layout)
 
         btn_layout = QHBoxLayout()
-        self.btn_save = QPushButton("✓ Kaydet")
+        self.btn_save = QPushButton("Kaydet")
         self.btn_save.setStyleSheet("background-color: #2ECC71;")
         self.btn_save.clicked.connect(self.accept)
         
@@ -159,8 +170,8 @@ class ParkinsonGUI(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("NeuroMotion Analiz - Medikal Prototip v4.8")
-        self.resize(1450, 950)
+        self.setWindowTitle("NeuroMotion Analiz - Çoklu Sensör v5.0")
+        self.resize(1500, 950)
         
         self.plot_counter = 0 
         
@@ -183,6 +194,21 @@ class ParkinsonGUI(QMainWindow):
             QGroupBox { color: #2980B9; font-weight: bold; border: 1px solid #BDC3C7; border-radius: 8px; margin-top: 10px; padding-top: 15px; background-color: #F8F9F9;}
             QProgressBar { border: 1px solid #BDC3C7; border-radius: 5px; text-align: center; color: #2C3E50; font-weight: bold; background-color: #ECF0F1; height: 18px; margin-top: 5px;}
             QProgressBar::chunk { background-color: #2ECC71; border-radius: 4px; }
+            
+            QPushButton.imu_card {
+                background-color: #FFFFFF;
+                border: 2px solid #BDC3C7;
+                border-radius: 10px;
+                color: #2C3E50;
+                font-weight: bold;
+                font-size: 16px;
+                text-align: left;
+                padding-left: 15px;
+            }
+            QPushButton.imu_card:hover {
+                border: 2px solid #3498DB;
+                background-color: #EBF5FB;
+            }
         """)
 
         self.worker = None
@@ -192,19 +218,26 @@ class ParkinsonGUI(QMainWindow):
         self.current_mode = "" 
         self.current_patient = None
         
-        # OSİLOSKOP (YAPAY ELEKTRİK SİNYALİ) DEĞİŞKENLERİ
-        self.is_stimulating = False
-        self.stim_phase = 0
+        # OSİLOSKOP DEĞİŞKENLERİ (ÇİFT KANAL)
+        self.is_stimulating_1 = False
+        self.stim_phase_1 = 0
+        
+        self.is_stimulating_2 = False
+        self.stim_phase_2 = 0
+        
         self.osc_timer = QTimer()
         self.osc_timer.timeout.connect(self.update_oscilloscope)
         
         self.workspace_root = os.path.dirname(os.path.abspath(__file__))
-        self.save_root = self.workspace_root  
         
         db_path = os.path.join(self.workspace_root, "test_history.db")
         self.db = TestDatabase(db_path)
-        self.data_buffer = { 'ax': [], 'ay': [], 'az': [], 'gx': [], 'gy': [], 'gz': [] }
-        self.buffer_size = 300 
+        
+        self.buffer_size = 300
+        self.multi_data_buffer = [
+            {'ax': [], 'ay': [], 'az': [], 'gx': [], 'gy': [], 'gz': []} for _ in range(12)
+        ]
+        self.active_detailed_imu = 0 
 
         self.init_ui()
         self.refresh_patient_list()
@@ -217,11 +250,9 @@ class ParkinsonGUI(QMainWindow):
         header_frame = QFrame()
         header_frame.setObjectName("Header")
         header_layout = QHBoxLayout(header_frame)
-        header_title = QLabel("🩺 Klinik Hasta Yönetimi")
+        header_title = QLabel("Klinik Hasta Yönetimi")
         header_title.setObjectName("HeaderTitle")
         header_layout.addWidget(header_title)
-        
-        # Sistem Hazır yazısı tamamen silindi
         main_layout.addWidget(header_frame)
 
         content_layout = QHBoxLayout()
@@ -229,10 +260,10 @@ class ParkinsonGUI(QMainWindow):
         content_layout.addWidget(left_panel)
 
         main_tabs = QTabWidget()
-        main_tabs.addTab(self._create_recording_tab(), " Kayıt & Stimülasyon")
-        main_tabs.addTab(self._create_patient_management_tab(), " Rapor Yönetimi")
-        main_tabs.addTab(self._create_patient_database_tab(), " Kayıtlı Hastalar") # YENİ PANEL
-        main_tabs.addTab(self._create_add_patient_tab(), "➕ Yeni Hasta Kaydı")
+        main_tabs.addTab(self._create_recording_tab(), "Kayıt & Stimülasyon")
+        main_tabs.addTab(self._create_patient_management_tab(), "Rapor Yönetimi")
+        main_tabs.addTab(self._create_patient_database_tab(), "Hasta Bilgi Bankası")
+        main_tabs.addTab(self._create_add_patient_tab(), "Yeni Hasta Kaydı")
         
         content_layout.addWidget(main_tabs, 1)
         main_layout.addLayout(content_layout)
@@ -243,7 +274,7 @@ class ParkinsonGUI(QMainWindow):
         control_frame.setMaximumWidth(320)
         left_layout = QVBoxLayout(control_frame)
 
-        lbl_patient = QLabel("👤 HASTA SEÇİMİ")
+        lbl_patient = QLabel("HASTA SEÇİMİ")
         lbl_patient.setStyleSheet("color: #2980B9; font-weight: bold; margin-bottom: 5px;")
         left_layout.addWidget(lbl_patient)
 
@@ -253,8 +284,8 @@ class ParkinsonGUI(QMainWindow):
         self.txt_search_patient.textChanged.connect(self.search_patients)
         search_row.addWidget(self.txt_search_patient)
         
-        btn_refresh_patients = self.create_button("⟳", "#ECF0F1", "#D5D8DC", text_color="#2C3E50")
-        btn_refresh_patients.setMaximumWidth(40)
+        btn_refresh_patients = self.create_button("Yenile", "#ECF0F1", "#D5D8DC", text_color="#2C3E50")
+        btn_refresh_patients.setMaximumWidth(60)
         btn_refresh_patients.clicked.connect(self.refresh_patient_list)
         search_row.addWidget(btn_refresh_patients)
         left_layout.addLayout(search_row)
@@ -285,7 +316,7 @@ class ParkinsonGUI(QMainWindow):
         self.txt_patient_history.setStyleSheet("background-color: #F8F9F9; color: #2C3E50; font-size: 12px;")
         left_layout.addWidget(self.txt_patient_history)
 
-        self.btn_delete_patient = self.create_button("🗑️ Hastayı Sil", "#E74C3C", "#C0392B")
+        self.btn_delete_patient = self.create_button("Hastayı Sil", "#E74C3C", "#C0392B")
         self.btn_delete_patient.setEnabled(False)
         self.btn_delete_patient.clicked.connect(self.delete_patient_action)
         left_layout.addWidget(self.btn_delete_patient)
@@ -321,7 +352,7 @@ class ParkinsonGUI(QMainWindow):
         self.prog_battery.setValue(0)
         left_layout.addWidget(self.prog_battery)
 
-        lbl_mode = QLabel(" PROTOKOL SEÇİMİ")
+        lbl_mode = QLabel("PROTOKOL SEÇİMİ")
         lbl_mode.setStyleSheet("color: #E67E22; font-weight: bold; margin-top: 15px; margin-left: -6px;")
         left_layout.addWidget(lbl_mode)
 
@@ -343,39 +374,63 @@ class ParkinsonGUI(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # --- 1, 2, 3 BUTONLARI (ÜST BAR) ---
+        # --- ÜST BAR YÖNETİMİ ---
         top_bar = QHBoxLayout()
         
-        lbl_view_title = QLabel("Aktif Görünüm:")
-        lbl_view_title.setStyleSheet("font-weight: bold; color: #7F8C8D;")
-        top_bar.addWidget(lbl_view_title)
+        self.btn_back_to_grid = self.create_button("< Tüm Sensörlere Dön", "#7F8C8D", "#95A5A6")
+        self.btn_back_to_grid.setVisible(False) 
+        self.btn_back_to_grid.clicked.connect(lambda: self.switch_sensor_view(-1))
+        top_bar.addWidget(self.btn_back_to_grid)
         
         top_bar.addStretch() 
         
-        self.btn_view1 = self.create_button("1", "#3498DB", "#2980B9", text_color="#FFFFFF")
-        self.btn_view2 = self.create_button("2", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
-        self.btn_view3 = self.create_button("3", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
+        lbl_view_title = QLabel("Aktif Görünüm:")
+        lbl_view_title.setStyleSheet("font-weight: bold; color: #7F8C8D; margin-right: 10px;")
+        top_bar.addWidget(lbl_view_title)
         
-        self.btn_view1.setFixedSize(40, 40)
-        self.btn_view2.setFixedSize(40, 40)
-        self.btn_view3.setFixedSize(40, 40)
+        self.btn_view1 = self.create_button("1 (Sensörler)", "#3498DB", "#2980B9", text_color="#FFFFFF")
+        self.btn_view2 = self.create_button("2 (Osiloskop)", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
         
         self.btn_view1.clicked.connect(lambda: self.switch_graph_view(0))
         self.btn_view2.clicked.connect(lambda: self.switch_graph_view(1))
-        self.btn_view3.clicked.connect(lambda: self.switch_graph_view(2))
         
         top_bar.addWidget(self.btn_view1)
         top_bar.addWidget(self.btn_view2)
-        top_bar.addWidget(self.btn_view3)
         layout.addLayout(top_bar)
 
-        # --- QSTACKED WIDGET (KATMANLI EKRAN) ---
-        self.graph_stack = QStackedWidget()
+        # --- QSTACKED WIDGET ---
+        self.main_stack = QStackedWidget()
         
-        # KATMAN 1: MEVCUT SENSÖR GRAFİKLERİ
-        page1 = QWidget()
-        page1_layout = QVBoxLayout(page1)
-        page1_layout.setContentsMargins(0, 0, 0, 0)
+        # KATMAN 1: SENSÖR GÖRÜNÜMÜ
+        page_sensors = QWidget()
+        page_sensors_layout = QVBoxLayout(page_sensors)
+        page_sensors_layout.setContentsMargins(0,0,0,0)
+        
+        self.sensor_stack = QStackedWidget()
+        
+        self.grid_widget = QWidget()
+        grid_layout = QGridLayout(self.grid_widget)
+        grid_layout.setSpacing(15)
+        
+        self.imu_buttons = []
+        for i in range(12):
+            btn = QPushButton(f"IMU {i+1}\n\nDurum: Bekliyor...")
+            btn.setProperty("class", "imu_card")
+            btn.setSizePolicy(btn.sizePolicy().Policy.Expanding, btn.sizePolicy().Policy.Expanding)
+            btn.clicked.connect(lambda checked, idx=i: self.switch_sensor_view(idx))
+            self.imu_buttons.append(btn)
+            row = i // 4
+            col = i % 4
+            grid_layout.addWidget(btn, row, col)
+            
+        self.sensor_stack.addWidget(self.grid_widget) 
+        
+        self.detail_widget = QWidget()
+        detail_layout = QVBoxLayout(self.detail_widget)
+        
+        self.lbl_active_imu = QLabel("IMU 1 Detay Görünümü")
+        self.lbl_active_imu.setStyleSheet("font-size: 18px; font-weight: bold; color: #2980B9;")
+        detail_layout.addWidget(self.lbl_active_imu)
         
         self.plot_acc = pg.PlotWidget(title="İvme (G-Force) - Kinematik Veri")
         self.plot_acc.showGrid(x=True, y=True, alpha=0.5)
@@ -384,7 +439,7 @@ class ParkinsonGUI(QMainWindow):
         self.curve_ax = self.plot_acc.plot(pen=pg.mkPen('#E74C3C', width=2), name="X Ekseni")
         self.curve_ay = self.plot_acc.plot(pen=pg.mkPen('#27AE60', width=2), name="Y Ekseni")
         self.curve_az = self.plot_acc.plot(pen=pg.mkPen('#2980B9', width=2), name="Z Ekseni")
-        page1_layout.addWidget(self.plot_acc, stretch=1) 
+        detail_layout.addWidget(self.plot_acc, stretch=1) 
 
         self.plot_gyro = pg.PlotWidget(title="Jiroskop (Açısal Hız) - Kinematik Veri")
         self.plot_gyro.showGrid(x=True, y=True, alpha=0.5)
@@ -393,55 +448,82 @@ class ParkinsonGUI(QMainWindow):
         self.curve_gx = self.plot_gyro.plot(pen=pg.mkPen('#E67E22', width=2), name="X Ekseni")
         self.curve_gy = self.plot_gyro.plot(pen=pg.mkPen('#8E44AD', width=2), name="Y Ekseni")
         self.curve_gz = self.plot_gyro.plot(pen=pg.mkPen('#16A085', width=2), name="Z Ekseni")
-        page1_layout.addWidget(self.plot_gyro, stretch=1)
-        self.graph_stack.addWidget(page1)
-
-        # KATMAN 2: CANLI ELEKTRİK (OSİLOSKOP) GRAFİĞİ
-        page2 = QWidget()
-        page2_layout = QVBoxLayout(page2)
-        page2_layout.setContentsMargins(0, 0, 0, 0)
+        detail_layout.addWidget(self.plot_gyro, stretch=1)
         
-        self.plot_stim = pg.PlotWidget(title="⚡ Terapötik Stimülasyon (Canlı Osiloskop)")
-        self.plot_stim.showGrid(x=True, y=True, alpha=0.5)
-        self.plot_stim.setBackground('#111111') 
-        self.plot_stim.getAxis('left').setPen('#2ECC71')
-        self.plot_stim.getAxis('bottom').setPen('#2ECC71')
-        self.plot_stim.setXRange(0, 100) 
-        self.plot_stim.setYRange(-1000, 11000) 
+        self.sensor_stack.addWidget(self.detail_widget)
+        page_sensors_layout.addWidget(self.sensor_stack)
+        self.main_stack.addWidget(page_sensors)
+
+        # KATMAN 2: CANLI ELEKTRİK (OSİLOSKOP) ÇİFT KANAL
+        page_stim = QWidget()
+        page_stim_layout = QVBoxLayout(page_stim)
+        page_stim_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.curve_stim = self.plot_stim.plot(pen=pg.mkPen('#2ECC71', width=2))
-        page2_layout.addWidget(self.plot_stim)
-        self.graph_stack.addWidget(page2)
-
-        # KATMAN 3: YENİ EKLENECEK MODÜL (YAPIM AŞAMASINDA)
-        page3 = QWidget()
-        page3_layout = QVBoxLayout(page3)
-        lbl_page3 = QLabel("Modül 3 - Yapım Aşamasında")
-        lbl_page3.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_page3.setStyleSheet("font-size: 24px; color: #BDC3C7; font-weight: bold;")
-        page3_layout.addWidget(lbl_page3)
-        self.graph_stack.addWidget(page3)
-
-        layout.addWidget(self.graph_stack, stretch=1)
-
-        # --- ELEKTRİK YÖNETİMİ PANELİ (SABİT ALT KISIM) ---
-        group_stim = QGroupBox(" Terapötik Stimülasyon Yönetimi")
-        group_stim.setMaximumHeight(110) 
-        stim_layout = QHBoxLayout(group_stim)
+        self.plot_stim_1 = pg.PlotWidget(title="Kanal 1 - Terapötik Stimülasyon")
+        self.plot_stim_1.showGrid(x=True, y=True, alpha=0.5)
+        self.plot_stim_1.setBackground('#111111') 
+        self.plot_stim_1.getAxis('left').setPen('#2ECC71')
+        self.plot_stim_1.getAxis('bottom').setPen('#2ECC71')
+        self.plot_stim_1.setXRange(0, 100) 
+        self.plot_stim_1.setYRange(-1000, 11000) 
+        self.curve_stim_1 = self.plot_stim_1.plot(pen=pg.mkPen('#2ECC71', width=2))
+        page_stim_layout.addWidget(self.plot_stim_1)
         
-        self.spin_hz = QSpinBox(); self.spin_hz.setRange(1, 150); self.spin_hz.setValue(50); self.spin_hz.setSuffix(" Hz")
-        self.spin_pulse = QSpinBox(); self.spin_pulse.setRange(50, 1000); self.spin_pulse.setValue(200); self.spin_pulse.setSuffix(" µs")
-        self.spin_amp = QSpinBox(); self.spin_amp.setRange(0, 10000); self.spin_amp.setValue(1500); self.spin_amp.setSuffix(" µA")
-        self.spin_duration = QSpinBox(); self.spin_duration.setRange(1, 60); self.spin_duration.setValue(20); self.spin_duration.setSuffix(" Dk")
+        self.plot_stim_2 = pg.PlotWidget(title="Kanal 2 - Terapötik Stimülasyon")
+        self.plot_stim_2.showGrid(x=True, y=True, alpha=0.5)
+        self.plot_stim_2.setBackground('#111111') 
+        self.plot_stim_2.getAxis('left').setPen('#3498DB')
+        self.plot_stim_2.getAxis('bottom').setPen('#3498DB')
+        self.plot_stim_2.setXRange(0, 100) 
+        self.plot_stim_2.setYRange(-1000, 11000) 
+        self.curve_stim_2 = self.plot_stim_2.plot(pen=pg.mkPen('#3498DB', width=2))
+        page_stim_layout.addWidget(self.plot_stim_2)
 
-        stim_layout.addWidget(QLabel("Frekans:")); stim_layout.addWidget(self.spin_hz)
-        stim_layout.addWidget(QLabel("Genişlik:")); stim_layout.addWidget(self.spin_pulse)
-        stim_layout.addWidget(QLabel("Şiddet:")); stim_layout.addWidget(self.spin_amp)
-        stim_layout.addWidget(QLabel("Süre:")); stim_layout.addWidget(self.spin_duration)
+        self.main_stack.addWidget(page_stim)
+        layout.addWidget(self.main_stack, stretch=1)
 
-        self.btn_apply_stim = self.create_button(" SİNYALİ BAŞLAT", "#1ABC9C", "#16A085")
-        self.btn_apply_stim.clicked.connect(self.toggle_stimulation_mock) 
-        stim_layout.addWidget(self.btn_apply_stim)
+        # --- ELEKTRİK YÖNETİMİ PANELİ (ÇİFT KANAL) ---
+        group_stim = QGroupBox("Terapötik Stimülasyon Yönetimi")
+        group_stim.setMaximumHeight(160) 
+        stim_main_layout = QVBoxLayout(group_stim)
+        
+        # Kanal 1 Kontrolleri
+        stim_layout_1 = QHBoxLayout()
+        lbl_ch1 = QLabel("KANAL 1:")
+        lbl_ch1.setStyleSheet("font-weight: bold; color: #2ECC71;")
+        stim_layout_1.addWidget(lbl_ch1)
+        
+        self.spin_hz_1 = QSpinBox(); self.spin_hz_1.setRange(1, 150); self.spin_hz_1.setValue(50); self.spin_hz_1.setSuffix(" Hz")
+        self.spin_pulse_1 = QSpinBox(); self.spin_pulse_1.setRange(50, 1000); self.spin_pulse_1.setValue(200); self.spin_pulse_1.setSuffix(" µs")
+        self.spin_amp_1 = QSpinBox(); self.spin_amp_1.setRange(0, 10000); self.spin_amp_1.setValue(1500); self.spin_amp_1.setSuffix(" µA")
+        
+        stim_layout_1.addWidget(QLabel("Frekans:")); stim_layout_1.addWidget(self.spin_hz_1)
+        stim_layout_1.addWidget(QLabel("Genişlik:")); stim_layout_1.addWidget(self.spin_pulse_1)
+        stim_layout_1.addWidget(QLabel("Şiddet:")); stim_layout_1.addWidget(self.spin_amp_1)
+        
+        self.btn_apply_stim_1 = self.create_button("SİNYALİ BAŞLAT (K1)", "#2ECC71", "#27AE60")
+        self.btn_apply_stim_1.clicked.connect(self.toggle_stimulation_1) 
+        stim_layout_1.addWidget(self.btn_apply_stim_1)
+        stim_main_layout.addLayout(stim_layout_1)
+        
+        # Kanal 2 Kontrolleri
+        stim_layout_2 = QHBoxLayout()
+        lbl_ch2 = QLabel("KANAL 2:")
+        lbl_ch2.setStyleSheet("font-weight: bold; color: #3498DB;")
+        stim_layout_2.addWidget(lbl_ch2)
+        
+        self.spin_hz_2 = QSpinBox(); self.spin_hz_2.setRange(1, 150); self.spin_hz_2.setValue(50); self.spin_hz_2.setSuffix(" Hz")
+        self.spin_pulse_2 = QSpinBox(); self.spin_pulse_2.setRange(50, 1000); self.spin_pulse_2.setValue(200); self.spin_pulse_2.setSuffix(" µs")
+        self.spin_amp_2 = QSpinBox(); self.spin_amp_2.setRange(0, 10000); self.spin_amp_2.setValue(1500); self.spin_amp_2.setSuffix(" µA")
+        
+        stim_layout_2.addWidget(QLabel("Frekans:")); stim_layout_2.addWidget(self.spin_hz_2)
+        stim_layout_2.addWidget(QLabel("Genişlik:")); stim_layout_2.addWidget(self.spin_pulse_2)
+        stim_layout_2.addWidget(QLabel("Şiddet:")); stim_layout_2.addWidget(self.spin_amp_2)
+        
+        self.btn_apply_stim_2 = self.create_button("SİNYALİ BAŞLAT (K2)", "#3498DB", "#2980B9")
+        self.btn_apply_stim_2.clicked.connect(self.toggle_stimulation_2) 
+        stim_layout_2.addWidget(self.btn_apply_stim_2)
+        stim_main_layout.addLayout(stim_layout_2)
 
         layout.addWidget(group_stim, stretch=0) 
         return tab
@@ -454,23 +536,21 @@ class ParkinsonGUI(QMainWindow):
 
         self.list_tremor = QListWidget(); self.list_tremor.setFixedHeight(150)
         self.list_tremor.itemDoubleClicked.connect(self.open_pdf_tremor)
-        layout.addWidget(QLabel(" Tremor Raporları")); layout.addWidget(self.list_tremor)
+        layout.addWidget(QLabel("Tremor Raporları")); layout.addWidget(self.list_tremor)
 
         self.list_bradi = QListWidget(); self.list_bradi.setFixedHeight(150)
         self.list_bradi.itemDoubleClicked.connect(self.open_pdf_bradi)
-        layout.addWidget(QLabel(" Bradikinezi Raporları")); layout.addWidget(self.list_bradi)
+        layout.addWidget(QLabel("Bradikinezi Raporları")); layout.addWidget(self.list_bradi)
         
         layout.addStretch()
         return tab
 
     def _create_patient_database_tab(self):
-        """Tüm hastaların detaylı görüntülendiği yeni bilgi bankası sekmesi"""
         tab = QWidget()
         layout = QHBoxLayout(tab)
 
-        # SOL TARAF: Arama ve Liste
         search_side = QVBoxLayout()
-        lbl_list_title = QLabel(" KAYITLI HASTALAR")
+        lbl_list_title = QLabel("KAYITLI HASTALAR")
         lbl_list_title.setStyleSheet("font-weight: bold; color: #2980B9;")
         search_side.addWidget(lbl_list_title)
 
@@ -486,7 +566,6 @@ class ParkinsonGUI(QMainWindow):
         
         layout.addLayout(search_side, 1)
 
-        # SAĞ TARAF: Detaylı Bilgi Kartı
         self.detail_card = QGroupBox("HASTA AYRINTILI DOSYASI")
         self.detail_card.setStyleSheet("QGroupBox { font-size: 15px; background-color: #FFFFFF; }")
         card_layout = QVBoxLayout(self.detail_card)
@@ -494,7 +573,6 @@ class ParkinsonGUI(QMainWindow):
         self.txt_full_details = QTextBrowser()
         self.txt_full_details.setOpenExternalLinks(False)
         self.txt_full_details.anchorClicked.connect(self.open_report_from_link)
-        self.txt_full_details.anchorClicked.connect(self.open_report_from_link) 
         self.txt_full_details.setReadOnly(True)
         self.txt_full_details.setStyleSheet("""
             QTextEdit { 
@@ -509,7 +587,6 @@ class ParkinsonGUI(QMainWindow):
         card_layout.addWidget(self.txt_full_details)
         
         layout.addWidget(self.detail_card, 2)
-        
         QTimer.singleShot(100, self.refresh_db_tab_list)
         return tab
 
@@ -528,8 +605,8 @@ class ParkinsonGUI(QMainWindow):
         self.txt_doctor_name = QLineEdit(); self.txt_phone = QLineEdit()
         self.txt_new_history = QTextEdit(); self.txt_new_history.setMaximumHeight(100)
 
-        form_layout.addRow("Protokol No *:", self.txt_protocol)
-        form_layout.addRow("Hasta Adı *:", self.txt_new_patient_name)
+        form_layout.addRow("Protokol No:", self.txt_protocol)
+        form_layout.addRow("Hasta Adı:", self.txt_new_patient_name)
         form_layout.addRow("Yaş:", self.spin_age)
         form_layout.addRow("Cinsiyet:", self.combo_gender)
         form_layout.addRow("Baskın Taraf:", self.combo_dominant_side)
@@ -541,13 +618,31 @@ class ParkinsonGUI(QMainWindow):
 
         layout.addWidget(scroll_widget)
         btn_layout = QHBoxLayout()
-        btn_save = self.create_button("✓ Kaydı Tamamla", "#2ECC71", "#27AE60"); btn_save.clicked.connect(self.add_new_patient)
-        btn_cancel = self.create_button("🔄 Temizle", "#95A5A6", "#7F8C8D"); btn_cancel.clicked.connect(self.clear_patient_form)
+        btn_save = self.create_button("Kaydı Tamamla", "#2ECC71", "#27AE60"); btn_save.clicked.connect(self.add_new_patient)
+        btn_cancel = self.create_button("Temizle", "#95A5A6", "#7F8C8D"); btn_cancel.clicked.connect(self.clear_patient_form)
         btn_layout.addWidget(btn_save); btn_layout.addWidget(btn_cancel)
         layout.addLayout(btn_layout)
         return tab
 
     # ---------------- FONKSİYONLAR ----------------
+    
+    def switch_graph_view(self, index):
+        self.main_stack.setCurrentIndex(index)
+        default_style = "QPushButton { background-color: #ECF0F1; color: #2C3E50; border-radius: 6px; font-weight: bold; font-size: 14px; border: 1px solid #BDC3C7; }"
+        active_style = "QPushButton { background-color: #3498DB; color: #FFFFFF; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; }"
+        
+        self.btn_view1.setStyleSheet(active_style if index == 0 else default_style)
+        self.btn_view2.setStyleSheet(active_style if index == 1 else default_style)
+
+    def switch_sensor_view(self, imu_index):
+        if imu_index == -1:
+            self.sensor_stack.setCurrentIndex(0)
+            self.btn_back_to_grid.setVisible(False)
+        else:
+            self.active_detailed_imu = imu_index
+            self.lbl_active_imu.setText(f"IMU {imu_index+1} Detay Görünümü")
+            self.sensor_stack.setCurrentIndex(1)
+            self.btn_back_to_grid.setVisible(True)
 
     def refresh_db_tab_list(self):
         self.db_patient_list.clear()
@@ -566,43 +661,32 @@ class ParkinsonGUI(QMainWindow):
         details = self.db.get_patient_details(patient_name)
         
         if details:
-            # 1. KLİNİK ÖYKÜYÜ OKUMA
             history_content = "<i>Kayıtlı öykü bulunamadı.</i>"
             history_file = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", patient_name, "oyku.txt")
             if os.path.exists(history_file):
                 with open(history_file, 'r', encoding='utf-8') as f:
                     history_content = f.read().replace('\n', '<br>')
 
-            # 2. GEÇMİŞ RAPORLARI DİNAMİK OLARAK TARAMA VE SIRALAMA
             p_folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", patient_name)
             t_folder = os.path.join(p_folder, "VeriSeti_Tremor")
             b_folder = os.path.join(p_folder, "VeriSeti_Bradikinezi")
             
             reports = []
-            
-            # Tremor Raporlarını Bul
             if os.path.exists(t_folder):
                 for f in os.listdir(t_folder):
                     if f.endswith(('.pdf', '.csv')):
-                        file_path = os.path.join(t_folder, f)
-                        reports.append({'file': f, 'type': 'Tremor Analizi', 'time': os.path.getmtime(file_path)})
-                        
-            # Bradikinezi Raporlarını Bul
+                        reports.append({'file': f, 'type': 'Tremor Analizi', 'time': os.path.getmtime(os.path.join(t_folder, f))})
             if os.path.exists(b_folder):
                 for f in os.listdir(b_folder):
                     if f.endswith(('.pdf', '.csv')):
-                        file_path = os.path.join(b_folder, f)
-                        reports.append({'file': f, 'type': 'Bradikinezi Analizi', 'time': os.path.getmtime(file_path)})
+                        reports.append({'file': f, 'type': 'Bradikinezi Analizi', 'time': os.path.getmtime(os.path.join(b_folder, f))})
                         
-            # Tarihe göre en yeniden en eskiye sırala
             reports.sort(key=lambda x: x['time'], reverse=True)
             
-            # Raporları HTML Tablo Satırlarına Dönüştür
             report_rows_html = ""
             if reports:
                 for r in reports:
                     date_str = datetime.fromtimestamp(r['time']).strftime('%d.%m.%Y - %H:%M')
-                    # DOSYA YOLUNU LİNK OLARAK GÖMÜYORUZ
                     file_url = f"file:///{p_folder}/{'VeriSeti_Tremor' if r['type'] == 'Tremor Analizi' else 'VeriSeti_Bradikinezi'}/{r['file']}".replace("\\", "/")
                     
                     report_rows_html += f"""
@@ -610,45 +694,28 @@ class ParkinsonGUI(QMainWindow):
                             <td style="padding: 6px; border-bottom: 1px solid #ECF0F1; color: #34495E;">{date_str}</td>
                             <td style="padding: 6px; border-bottom: 1px solid #ECF0F1; font-weight: bold; color: #2980B9;">{r['type']}</td>
                             <td style="padding: 6px; border-bottom: 1px solid #ECF0F1;">
-                                <a href="{file_url}" style="color: #E67E22; text-decoration: none; font-weight: bold;">📂 {r['file']}</a>
+                                <a href="{file_url}" style="color: #E67E22; text-decoration: none; font-weight: bold;">Dosya: {r['file']}</a>
                             </td>
                         </tr>
                     """
 
-            # 3. HTML TASARIMINI BİRLEŞTİRME
             info_html = f"""
             <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #2C3E50;">
-                
-                <h3 style="color: #2980B9; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">
-                     GENEL KİMLİK BİLGİLERİ
-                </h3>
+                <h3 style="color: #2980B9; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">GENEL KİMLİK BİLGİLERİ</h3>
                 <table style="width: 100%; font-size: 14px; margin-bottom: 20px;">
                     <tr><td style="width: 120px; font-weight: bold; color: #7F8C8D;">Protokol No:</td><td>{details.get('protocol_no', '-')}</td></tr>
                     <tr><td style="font-weight: bold; color: #7F8C8D;">Hasta Adı:</td><td style="font-weight: bold; color: #27AE60;">{patient_name}</td></tr>
                     <tr><td style="font-weight: bold; color: #7F8C8D;">Yaş / Cinsiyet:</td><td>{details.get('age', '-')} / {details.get('gender', '-')}</td></tr>
                     <tr><td style="font-weight: bold; color: #7F8C8D;">İletişim:</td><td>{details.get('contact_phone', '-')}</td></tr>
                 </table>
-
-                <h3 style="color: #E67E22; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">
-                     KLİNİK DURUM VE TANI
-                </h3>
+                <h3 style="color: #E67E22; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">KLİNİK DURUM VE TANI</h3>
                 <table style="width: 100%; font-size: 14px; margin-bottom: 20px;">
                     <tr><td style="width: 120px; font-weight: bold; color: #7F8C8D;">Tanı Grubu:</td><td><b>{details.get('diagnosis', '-')}</b></td></tr>
                     <tr><td style="font-weight: bold; color: #7F8C8D;">Baskın Taraf:</td><td>{details.get('dominant_side', '-')}</td></tr>
-                    <tr><td style="font-weight: bold; color: #7F8C8D;">Başlangıç Yılı:</td><td>{details.get('onset_year', '-')}</td></tr>
-                    <tr><td style="font-weight: bold; color: #7F8C8D;">Sorumlu Hekim:</td><td>{details.get('doctor_name', '-')}</td></tr>
                 </table>
-
-                <h3 style="color: #8E44AD; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">
-                    KLİNİK ÖYKÜ VE NOTLAR
-                </h3>
-                <div style="background-color: #F4F6F9; padding: 10px; border-radius: 5px; border-left: 4px solid #8E44AD; font-size: 13px; line-height: 1.5; margin-bottom: 20px;">
-                    {history_content}
-                </div>
-                
-                <h3 style="color: #16A085; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">
-                     GEÇMİŞ KLİNİK RAPORLAR VE TESTLER
-                </h3>
+                <h3 style="color: #8E44AD; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">KLİNİK ÖYKÜ VE NOTLAR</h3>
+                <div style="background-color: #F4F6F9; padding: 10px; border-radius: 5px; border-left: 4px solid #8E44AD; font-size: 13px; line-height: 1.5; margin-bottom: 20px;">{history_content}</div>
+                <h3 style="color: #16A085; border-bottom: 2px solid #BDC3C7; padding-bottom: 5px; margin-bottom: 10px;">GEÇMİŞ KLİNİK RAPORLAR VE TESTLER</h3>
                 <table style="width: 100%; font-size: 13px; text-align: left; border-collapse: collapse;">
                     <tr style="background-color: #ECF0F1; color: #2C3E50;">
                         <th style="padding: 6px; border-bottom: 2px solid #BDC3C7; width: 130px;">Kayıt Tarihi</th>
@@ -657,76 +724,87 @@ class ParkinsonGUI(QMainWindow):
                     </tr>
                     {report_rows_html}
                 </table>
-
             </div>
             """
             self.txt_full_details.setHtml(info_html)
             
     def open_report_from_link(self, url):
-        """HTML içindeki dosya linkine tıklandığında dosyayı açar"""
         file_path = url.toLocalFile()
         if os.path.exists(file_path):
-            try:
-                os.startfile(file_path)
-            except Exception as e:
-                print(f"Dosya açma hatası: {e}")
-        else:
-            QMessageBox.warning(self, "Hata", "Dosya fiziksel olarak bulunamadı!")
+            try: os.startfile(file_path)
+            except Exception as e: print(f"Dosya açma hatası: {e}")
+        else: QMessageBox.warning(self, "Hata", "Dosya fiziksel olarak bulunamadı!")
 
-    def switch_graph_view(self, index):
-        self.graph_stack.setCurrentIndex(index)
-        
-        default_style = "QPushButton { background-color: #ECF0F1; color: #2C3E50; border-radius: 6px; font-weight: bold; font-size: 14px; border: 1px solid #BDC3C7; }"
-        active_style = "QPushButton { background-color: #3498DB; color: #FFFFFF; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; }"
-        
-        self.btn_view1.setStyleSheet(active_style if index == 0 else default_style)
-        self.btn_view2.setStyleSheet(active_style if index == 1 else default_style)
-        self.btn_view3.setStyleSheet(active_style if index == 2 else default_style)
-
-    def toggle_stimulation_mock(self):
+    def toggle_stimulation_1(self):
         if not self.current_patient:
             QMessageBox.warning(self, "Uyarı", "Lütfen önce bir hasta seçin!")
             return
             
-        if not self.is_stimulating:
-            self.is_stimulating = True
-            self.stim_phase = 0 
-            self.osc_timer.start(30) 
-            self.btn_apply_stim.setText(" SİNYALİ DURDUR")
-            self.btn_apply_stim.setStyleSheet("QPushButton { background-color: #E74C3C; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
+        if not self.is_stimulating_1:
+            self.is_stimulating_1 = True
+            self.stim_phase_1 = 0 
+            if not self.osc_timer.isActive():
+                self.osc_timer.start(30)
+            self.btn_apply_stim_1.setText("SİNYALİ DURDUR (K1)")
+            self.btn_apply_stim_1.setStyleSheet("QPushButton { background-color: #E74C3C; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
             self.switch_graph_view(1)
         else:
-            self.is_stimulating = False
-            self.osc_timer.stop()
-            self.curve_stim.setData([], []) 
-            self.btn_apply_stim.setText(" SİNYALİ BAŞLAT")
-            self.btn_apply_stim.setStyleSheet("QPushButton { background-color: #1ABC9C; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
+            self.is_stimulating_1 = False
+            self.curve_stim_1.setData([], []) 
+            self.btn_apply_stim_1.setText("SİNYALİ BAŞLAT (K1)")
+            self.btn_apply_stim_1.setStyleSheet("QPushButton { background-color: #2ECC71; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
+            if not self.is_stimulating_1 and not self.is_stimulating_2:
+                self.osc_timer.stop()
 
-    def update_oscilloscope(self):
-        if not self.is_stimulating:
+    def toggle_stimulation_2(self):
+        if not self.current_patient:
+            QMessageBox.warning(self, "Uyarı", "Lütfen önce bir hasta seçin!")
             return
             
-        hz = self.spin_hz.value()
-        pulse = self.spin_pulse.value() 
-        amp = self.spin_amp.value() 
-        
-        T_ms = 1000.0 / hz if hz > 0 else 20.0 
-        PW_ms = pulse / 1000.0 
-        
-        self.stim_phase += 1.5 
-        
+        if not self.is_stimulating_2:
+            self.is_stimulating_2 = True
+            self.stim_phase_2 = 0 
+            if not self.osc_timer.isActive():
+                self.osc_timer.start(30)
+            self.btn_apply_stim_2.setText("SİNYALİ DURDUR (K2)")
+            self.btn_apply_stim_2.setStyleSheet("QPushButton { background-color: #E74C3C; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
+            self.switch_graph_view(1)
+        else:
+            self.is_stimulating_2 = False
+            self.curve_stim_2.setData([], []) 
+            self.btn_apply_stim_2.setText("SİNYALİ BAŞLAT (K2)")
+            self.btn_apply_stim_2.setStyleSheet("QPushButton { background-color: #3498DB; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
+            if not self.is_stimulating_1 and not self.is_stimulating_2:
+                self.osc_timer.stop()
+
+    def update_oscilloscope(self):
         t = np.linspace(0, 100, 2000) 
-        t_shifted = t + self.stim_phase
         
-        wave = np.where((t_shifted % T_ms) < PW_ms, amp, 0)
-        
-        self.curve_stim.setData(t, wave)
+        if self.is_stimulating_1:
+            hz1 = self.spin_hz_1.value()
+            pulse1 = self.spin_pulse_1.value() 
+            amp1 = self.spin_amp_1.value() 
+            T_ms1 = 1000.0 / hz1 if hz1 > 0 else 20.0 
+            PW_ms1 = pulse1 / 1000.0 
+            self.stim_phase_1 += 1.5 
+            wave1 = np.where(((t + self.stim_phase_1) % T_ms1) < PW_ms1, amp1, 0)
+            self.curve_stim_1.setData(t, wave1)
+            
+        if self.is_stimulating_2:
+            hz2 = self.spin_hz_2.value()
+            pulse2 = self.spin_pulse_2.value() 
+            amp2 = self.spin_amp_2.value() 
+            T_ms2 = 1000.0 / hz2 if hz2 > 0 else 20.0 
+            PW_ms2 = pulse2 / 1000.0 
+            self.stim_phase_2 += 1.5 
+            wave2 = np.where(((t + self.stim_phase_2) % T_ms2) < PW_ms2, amp2, 0)
+            self.curve_stim_2.setData(t, wave2)
 
     def show_patient_context_menu(self, pos):
         item = self.list_patients.itemAt(pos)
         if item is None: return
         menu = QMenu(self)
-        update_action = QAction(" Bilgileri Güncelle", self)
+        update_action = QAction("Bilgileri Güncelle", self)
         update_action.triggered.connect(lambda: self.open_update_dialog(item.text()))
         menu.addAction(update_action)
         menu.exec(self.list_patients.viewport().mapToGlobal(pos))
@@ -735,21 +813,17 @@ class ParkinsonGUI(QMainWindow):
         details = self.db.get_patient_details(patient_name)
         if not details: return
         dialog = UpdatePatientDialog(patient_name, details, self)
-        
         history_file = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", patient_name, "oyku.txt")
         if os.path.exists(history_file):
             with open(history_file, 'r', encoding='utf-8') as f: dialog.txt_history.setText(f.read())
-
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.get_updated_data()
             try:
                 if hasattr(self.db, 'update_patient_details'):
                     self.db.update_patient_details(patient_name, new_data['age'], new_data['dominant_side'], new_data['doctor'], new_data['phone'])
             except: pass
-            if new_data['history'] or new_data['history'] == "":
-                with open(history_file, 'w', encoding='utf-8') as f: f.write(new_data['history'])
-            self.refresh_patient_list()
-            self.refresh_db_tab_list()
+            with open(history_file, 'w', encoding='utf-8') as f: f.write(new_data['history'])
+            self.refresh_patient_list(); self.refresh_db_tab_list()
 
     def refresh_patient_list(self):
         self.list_patients.clear()
@@ -766,8 +840,7 @@ class ParkinsonGUI(QMainWindow):
         self.lbl_current_patient.setText(f"Hasta: {self.current_patient}")
         details = self.db.get_patient_details(self.current_patient)
         if details:
-            self.text_patient_details.setText(f"Protokol: {details.get('protocol_no','-')} | Yaş: {details.get('age','-')} | Taraf: {details.get('dominant_side','-')}")
-        
+            self.text_patient_details.setText(f"Protokol: {details.get('protocol_no','-')} | Yaş: {details.get('age','-')}")
         history_file = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient, "oyku.txt")
         if os.path.exists(history_file):
             with open(history_file, 'r', encoding='utf-8') as f: self.txt_patient_history.setText(f.read())
@@ -778,18 +851,12 @@ class ParkinsonGUI(QMainWindow):
         name = self.txt_new_patient_name.text().strip()
         protocol = self.txt_protocol.text().strip()
         if not name or not protocol: QMessageBox.warning(self, "Uyarı", "Gerekli alanları doldurun!"); return
-        
-        if self.db.add_patient_with_details(protocol, name, self.spin_age.value(), self.combo_gender.currentText(), 
-                                            self.combo_dominant_side.currentText(), self.spin_onset_year.value(), 
-                                            self.combo_diagnosis.currentText(), self.txt_doctor_name.text().strip(), 
-                                            self.txt_phone.text().strip()):
+        if self.db.add_patient_with_details(protocol, name, self.spin_age.value(), self.combo_gender.currentText(), self.combo_dominant_side.currentText(), self.spin_onset_year.value(), self.combo_diagnosis.currentText(), self.txt_doctor_name.text().strip(), self.txt_phone.text().strip()):
             p_folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", name)
             os.makedirs(os.path.join(p_folder, "VeriSeti_Tremor"), exist_ok=True)
             os.makedirs(os.path.join(p_folder, "VeriSeti_Bradikinezi"), exist_ok=True)
             with open(os.path.join(p_folder, "oyku.txt"), 'w', encoding='utf-8') as f: f.write(self.txt_new_history.toPlainText())
-            self.clear_patient_form()
-            self.refresh_patient_list()
-            self.refresh_db_tab_list()
+            self.clear_patient_form(); self.refresh_patient_list(); self.refresh_db_tab_list()
         else: QMessageBox.warning(self, "Hata", "Kayıt mevcut!")
 
     def delete_patient_action(self):
@@ -799,8 +866,7 @@ class ParkinsonGUI(QMainWindow):
                 self.db.delete_patient(self.current_patient)
                 shutil.rmtree(os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient), ignore_errors=True)
                 self.current_patient = None
-                self.refresh_patient_list()
-                self.refresh_db_tab_list()
+                self.refresh_patient_list(); self.refresh_db_tab_list()
             except: pass
 
     def clear_patient_form(self):
@@ -810,11 +876,9 @@ class ParkinsonGUI(QMainWindow):
     def update_patient_records(self):
         if not self.current_patient: return
         p_folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient)
-        t_folder = os.path.join(p_folder, "VeriSeti_Tremor")
-        b_folder = os.path.join(p_folder, "VeriSeti_Bradikinezi")
         self.list_tremor.clear(); self.list_bradi.clear()
-        if os.path.exists(t_folder): self.list_tremor.addItems([f for f in os.listdir(t_folder) if f.endswith(('.pdf', '.csv'))])
-        if os.path.exists(b_folder): self.list_bradi.addItems([f for f in os.listdir(b_folder) if f.endswith(('.pdf', '.csv'))])
+        if os.path.exists(os.path.join(p_folder, "VeriSeti_Tremor")): self.list_tremor.addItems([f for f in os.listdir(os.path.join(p_folder, "VeriSeti_Tremor")) if f.endswith(('.pdf', '.csv'))])
+        if os.path.exists(os.path.join(p_folder, "VeriSeti_Bradikinezi")): self.list_bradi.addItems([f for f in os.listdir(os.path.join(p_folder, "VeriSeti_Bradikinezi")) if f.endswith(('.pdf', '.csv'))])
 
     def toggle_recording(self):
         if not self.current_patient: QMessageBox.warning(self, "Uyarı", "Hasta seçin!"); return
@@ -832,39 +896,53 @@ class ParkinsonGUI(QMainWindow):
     def save_data_to_csv(self):
         if not self.recording_data: return
         with open(self.current_filename, 'w', newline='') as f:
-            writer = csv.writer(f); writer.writerow(["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"])
+            writer = csv.writer(f)
+            headers = []
+            for i in range(12): headers.extend([f"IMU{i+1}_AccX", f"IMU{i+1}_AccY", f"IMU{i+1}_AccZ", f"IMU{i+1}_GyroX", f"IMU{i+1}_GyroY", f"IMU{i+1}_GyroZ"])
+            writer.writerow(headers)
             writer.writerows(self.recording_data)
-        try:
-            accel = np.array([[float(r[0]), float(r[1]), float(r[2])] for r in self.recording_data])
-            self.db.add_test(self.current_patient, self.current_mode, self.current_filename, np.sqrt(np.mean(accel**2)), 0.0, "")
+        try: self.db.add_test(self.current_patient, self.current_mode, self.current_filename, 0.0, 0.0, "")
         except: pass
 
     def update_plot(self, data):
-        if len(data) >= 7:
-            battery_pct = int(data[6])
+        if len(data) >= 73:
+            battery_pct = int(data[72])
             self.prog_battery.setValue(battery_pct)
 
-        self.data_buffer['ax'].append(data[0] / 16384.0)
-        self.data_buffer['ay'].append(data[1] / 16384.0)
-        self.data_buffer['az'].append(data[2] / 16384.0)
-        self.data_buffer['gx'].append(data[3] / 131.0)
-        self.data_buffer['gy'].append(data[4] / 131.0)
-        self.data_buffer['gz'].append(data[5] / 131.0)
+            if self.is_recording:
+                self.recording_data.append(data[:72])
 
-        if self.is_recording:
-            self.recording_data.append([data[0], data[1], data[2], data[3], data[4], data[5]])
+            for i in range(12):
+                base_idx = i * 6
+                self.multi_data_buffer[i]['ax'].append(data[base_idx+0] / 16384.0)
+                self.multi_data_buffer[i]['ay'].append(data[base_idx+1] / 16384.0)
+                self.multi_data_buffer[i]['az'].append(data[base_idx+2] / 16384.0)
+                self.multi_data_buffer[i]['gx'].append(data[base_idx+3] / 131.0)
+                self.multi_data_buffer[i]['gy'].append(data[base_idx+4] / 131.0)
+                self.multi_data_buffer[i]['gz'].append(data[base_idx+5] / 131.0)
 
-        for key in self.data_buffer:
-            if len(self.data_buffer[key]) > self.buffer_size: self.data_buffer[key].pop(0)
+                for key in ['ax', 'ay', 'az', 'gx', 'gy', 'gz']:
+                    if len(self.multi_data_buffer[i][key]) > self.buffer_size:
+                        self.multi_data_buffer[i][key].pop(0)
+                        
+            if self.sensor_stack.currentIndex() == 0:
+                self.plot_counter += 1
+                if self.plot_counter % 20 == 0: 
+                    for i in range(12):
+                        if len(self.multi_data_buffer[i]['ax']) > 0:
+                            current_x = self.multi_data_buffer[i]['ax'][-1]
+                            self.imu_buttons[i].setText(f"IMU {i+1}\n\nAktif: {current_x:.2f} G")
 
-        self.plot_counter += 1
-        if self.plot_counter % 5 == 0:
-            self.curve_ax.setData(self.data_buffer['ax'])
-            self.curve_ay.setData(self.data_buffer['ay'])
-            self.curve_az.setData(self.data_buffer['az'])
-            self.curve_gx.setData(self.data_buffer['gx'])
-            self.curve_gy.setData(self.data_buffer['gy'])
-            self.curve_gz.setData(self.data_buffer['gz'])
+            elif self.sensor_stack.currentIndex() == 1:
+                self.plot_counter += 1
+                if self.plot_counter % 5 == 0:
+                    idx = self.active_detailed_imu
+                    self.curve_ax.setData(self.multi_data_buffer[idx]['ax'])
+                    self.curve_ay.setData(self.multi_data_buffer[idx]['ay'])
+                    self.curve_az.setData(self.multi_data_buffer[idx]['az'])
+                    self.curve_gx.setData(self.multi_data_buffer[idx]['gx'])
+                    self.curve_gy.setData(self.multi_data_buffer[idx]['gy'])
+                    self.curve_gz.setData(self.multi_data_buffer[idx]['gz'])
 
     def toggle_connection(self):
         if self.worker is None:
@@ -875,6 +953,7 @@ class ParkinsonGUI(QMainWindow):
         else:
             self.worker.stop(); self.worker = None
             self.btn_connect.setText("CİHAZA BAĞLAN"); self.btn_record.setEnabled(False)
+            for btn in self.imu_buttons: btn.setText(btn.text().split("\n")[0] + "\n\nDurum: Bekliyor...")
 
     def refresh_ports(self):
         self.combo_ports.clear()
@@ -884,18 +963,15 @@ class ParkinsonGUI(QMainWindow):
         if not getattr(self, 'current_filename', '') or not os.path.exists(self.current_filename): return
         try:
             QApplication.processEvents() 
-            
             if self.current_mode == "Tremor":
                 import analyze_tremor
                 analyze_tremor.run_analysis(self.current_filename)
             else:
                 import analyze_bradykinesia
                 analyze_bradykinesia.run_analysis(self.current_filename)
-
             QApplication.processEvents()
             QMessageBox.information(self, "Başarılı", "Analiz tamamlandı.")
-        except Exception as e:
-            QMessageBox.critical(self, "Hata", f"Hata: {e}")
+        except Exception as e: QMessageBox.critical(self, "Hata", f"Hata: {e}")
 
     def open_pdf_tremor(self, item):
         if not self.current_patient: return
