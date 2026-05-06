@@ -170,7 +170,7 @@ class ParkinsonGUI(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("NeuroMotion Analiz - Klinik Prototip v5.8")
+        self.setWindowTitle("NeuroMotion Analiz - Klinik Komuta Merkezi v6.1")
         self.resize(1500, 950)
         
         self.plot_counter = 0 
@@ -218,7 +218,6 @@ class ParkinsonGUI(QMainWindow):
         self.current_mode = "" 
         self.current_patient = None
         
-        # OSILOSKOP DEGISKENLERI (CIFT KANAL + SAYAC)
         self.is_stimulating_1 = False
         self.stim_countdown_timer_1 = QTimer()
         self.stim_countdown_timer_1.timeout.connect(self.update_stim_countdown_1)
@@ -257,7 +256,7 @@ class ParkinsonGUI(QMainWindow):
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(10, 5, 10, 5)
         
-        self.btn_toggle_panel = QPushButton("=")
+        self.btn_toggle_panel = QPushButton("☰")
         self.btn_toggle_panel.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_toggle_panel.setStyleSheet("""
             QPushButton { background-color: transparent; color: white; font-size: 26px; border: none; padding: 5px; }
@@ -298,7 +297,7 @@ class ParkinsonGUI(QMainWindow):
         left_layout = QVBoxLayout(control_frame)
         left_layout.setContentsMargins(10, 10, 10, 10)
 
-        lbl_patient = QLabel("HASTA SEÇİMİ")
+        lbl_patient = QLabel("HASTA SECIMI")
         lbl_patient.setStyleSheet("color: #2980B9; font-weight: bold; margin-bottom: 5px;")
         left_layout.addWidget(lbl_patient)
 
@@ -321,7 +320,7 @@ class ParkinsonGUI(QMainWindow):
         self.list_patients.itemClicked.connect(self.select_patient)
         left_layout.addWidget(self.list_patients)
 
-        self.lbl_current_patient = QLabel("Hiç biri seçilmedi")
+        self.lbl_current_patient = QLabel("Hicbiri secilmedi")
         self.lbl_current_patient.setStyleSheet("color: #27AE60; font-weight: bold; font-size: 15px; margin-top: 5px;")
         left_layout.addWidget(self.lbl_current_patient)
 
@@ -351,7 +350,7 @@ class ParkinsonGUI(QMainWindow):
         line.setStyleSheet("color: #E0E6ED;")
         left_layout.addWidget(line)
 
-        lbl_device = QLabel("CİHAZ BAĞLANTISI")
+        lbl_device = QLabel("CIHAZ BAGLANTISI")
         lbl_device.setStyleSheet("color: #2980B9; font-weight: bold; margin-left: 1px;")
         left_layout.addWidget(lbl_device)
 
@@ -364,7 +363,7 @@ class ParkinsonGUI(QMainWindow):
         port_row.addWidget(btn_refresh)
         left_layout.addLayout(port_row)
 
-        self.btn_connect = self.create_button("CİHAZA BAĞLAN", "#3498DB", "#2980B9")
+        self.btn_connect = self.create_button("CIHAZA BAGLAN", "#3498DB", "#2980B9")
         self.btn_connect.clicked.connect(self.toggle_connection)
         left_layout.addWidget(self.btn_connect)
 
@@ -387,7 +386,7 @@ class ParkinsonGUI(QMainWindow):
 
         left_layout.addSpacing(10)
 
-        self.btn_record = self.create_button("KAYDI BAŞLAT", "#E74C3C", "#C0392B")
+        self.btn_record = self.create_button("KAYDI BASLAT", "#E74C3C", "#C0392B")
         self.btn_record.setEnabled(False)
         self.btn_record.setMinimumHeight(45)
         self.btn_record.clicked.connect(self.toggle_recording)
@@ -477,6 +476,7 @@ class ParkinsonGUI(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
+        # --- UST BAR YONETIMI ---
         top_bar = QHBoxLayout()
         
         self.btn_back_to_grid = self.create_button("< Tum Sensorlere Don", "#7F8C8D", "#95A5A6")
@@ -490,18 +490,81 @@ class ParkinsonGUI(QMainWindow):
         lbl_view_title.setStyleSheet("font-weight: bold; color: #7F8C8D; margin-right: 10px;")
         top_bar.addWidget(lbl_view_title)
         
-        self.btn_view1 = self.create_button("1 (Sensörler)", "#3498DB", "#2980B9", text_color="#FFFFFF")
-        self.btn_view2 = self.create_button("2 (Sinyal)", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
+        self.btn_view1 = self.create_button("1 (Karma Ekran)", "#9B59B6", "#8E44AD", text_color="#FFFFFF")
+        self.btn_view2 = self.create_button("2 (Sensorler)", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
+        self.btn_view3 = self.create_button("3 (Osiloskop)", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
         
         self.btn_view1.clicked.connect(lambda: self.switch_graph_view(0))
         self.btn_view2.clicked.connect(lambda: self.switch_graph_view(1))
+        self.btn_view3.clicked.connect(lambda: self.switch_graph_view(2))
         
         top_bar.addWidget(self.btn_view1)
         top_bar.addWidget(self.btn_view2)
+        top_bar.addWidget(self.btn_view3)
         layout.addLayout(top_bar)
 
+        # --- QSTACKED WIDGET ---
         self.main_stack = QStackedWidget()
         
+        # ====================================================
+        # KATMAN 1 (Index 0): KARMA GORUNUM (SOL: GRID, SAG: OSILOSKOP DIKEY & YAN YANA)
+        # ====================================================
+        page_mixed = QWidget()
+        page_mixed_layout = QHBoxLayout(page_mixed)
+        page_mixed_layout.setContentsMargins(0, 0, 0, 0)
+        page_mixed_layout.setSpacing(10)
+        
+        mixed_grid_widget = QWidget()
+        mixed_grid_layout = QGridLayout(mixed_grid_widget)
+        mixed_grid_layout.setSpacing(10)
+        mixed_grid_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.imu_buttons_mixed = []
+        for i in range(12):
+            btn = QPushButton(f"IMU {i+1}\n\nDurum: Bekliyor...")
+            btn.setProperty("class", "imu_card")
+            btn.setSizePolicy(btn.sizePolicy().Policy.Expanding, btn.sizePolicy().Policy.Expanding)
+            btn.clicked.connect(lambda checked, idx=i: self.switch_sensor_view(idx))
+            self.imu_buttons_mixed.append(btn)
+            mixed_grid_layout.addWidget(btn, i // 4, i % 4)
+            
+        page_mixed_layout.addWidget(mixed_grid_widget, stretch=5)
+        
+        # Sağ Taraf - Yan Yana Dikey Osiloskoplar (QHBoxLayout ile yapıldı)
+        mixed_stim_widget = QWidget()
+        mixed_stim_layout = QHBoxLayout(mixed_stim_widget)
+        mixed_stim_layout.setSpacing(10)
+        mixed_stim_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.plot_stim_1_mixed = pg.PlotWidget(title="Kanal 1")
+        self.plot_stim_1_mixed.showGrid(x=True, y=True, alpha=0.5)
+        self.plot_stim_1_mixed.setBackground('#111111')
+        self.plot_stim_1_mixed.getAxis('left').setPen('#2ECC71')
+        self.plot_stim_1_mixed.getAxis('bottom').setPen('#2ECC71')
+        self.plot_stim_1_mixed.setLabel('left', 'Zaman', units='ms')
+        self.plot_stim_1_mixed.setLabel('bottom', 'Akim', units='uA')
+        self.plot_stim_1_mixed.getPlotItem().invertY(True) # Dikey akis icin ters cevir
+        self.curve_stim_1_mixed = self.plot_stim_1_mixed.plot(pen=pg.mkPen('#2ECC71', width=2))
+        
+        self.plot_stim_2_mixed = pg.PlotWidget(title="Kanal 2")
+        self.plot_stim_2_mixed.showGrid(x=True, y=True, alpha=0.5)
+        self.plot_stim_2_mixed.setBackground('#111111')
+        self.plot_stim_2_mixed.getAxis('left').setPen('#3498DB')
+        self.plot_stim_2_mixed.getAxis('bottom').setPen('#3498DB')
+        self.plot_stim_2_mixed.setLabel('left', 'Zaman', units='ms')
+        self.plot_stim_2_mixed.setLabel('bottom', 'Akim', units='uA')
+        self.plot_stim_2_mixed.getPlotItem().invertY(True) # Dikey akis icin ters cevir
+        self.curve_stim_2_mixed = self.plot_stim_2_mixed.plot(pen=pg.mkPen('#3498DB', width=2))
+        
+        mixed_stim_layout.addWidget(self.plot_stim_1_mixed)
+        mixed_stim_layout.addWidget(self.plot_stim_2_mixed)
+        
+        page_mixed_layout.addWidget(mixed_stim_widget, stretch=4)
+        self.main_stack.addWidget(page_mixed)
+
+        # ====================================================
+        # KATMAN 2 (Index 1): SADECE SENSOR GORUNUMU
+        # ====================================================
         page_sensors = QWidget()
         page_sensors_layout = QVBoxLayout(page_sensors)
         page_sensors_layout.setContentsMargins(0,0,0,0)
@@ -554,6 +617,9 @@ class ParkinsonGUI(QMainWindow):
         page_sensors_layout.addWidget(self.sensor_stack)
         self.main_stack.addWidget(page_sensors)
 
+        # ====================================================
+        # KATMAN 3 (Index 2): SADECE OSILOSKOP GORUNUMU
+        # ====================================================
         page_stim = QWidget()
         page_stim_layout = QVBoxLayout(page_stim)
         page_stim_layout.setContentsMargins(0, 0, 0, 0)
@@ -579,8 +645,10 @@ class ParkinsonGUI(QMainWindow):
         page_stim_layout.addWidget(self.plot_stim_2)
 
         self.main_stack.addWidget(page_stim)
+        
         layout.addWidget(self.main_stack, stretch=1)
 
+        # --- ELEKTRIK YONETIMI PANELI (CIFT KANAL - SLIDE BARS) ---
         group_stim = QGroupBox("Terapotik Simulasyon Yonetimi")
         group_stim.setMaximumHeight(220) 
         stim_main_layout = QVBoxLayout(group_stim)
@@ -626,6 +694,9 @@ class ParkinsonGUI(QMainWindow):
         stim_main_layout.addLayout(stim_layout_2)
 
         layout.addWidget(group_stim, stretch=0) 
+        
+        self.switch_graph_view(0)
+        
         return tab
 
     def _create_patient_management_tab(self):
@@ -749,10 +820,16 @@ class ParkinsonGUI(QMainWindow):
     def switch_graph_view(self, index):
         self.main_stack.setCurrentIndex(index)
         default_style = "QPushButton { background-color: #ECF0F1; color: #2C3E50; border-radius: 6px; font-weight: bold; font-size: 14px; border: 1px solid #BDC3C7; }"
-        active_style = "QPushButton { background-color: #3498DB; color: #FFFFFF; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; }"
         
-        self.btn_view1.setStyleSheet(active_style if index == 0 else default_style)
-        self.btn_view2.setStyleSheet(active_style if index == 1 else default_style)
+        self.btn_view1.setStyleSheet("QPushButton { background-color: #9B59B6; color: #FFFFFF; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; }" if index == 0 else default_style)
+        self.btn_view2.setStyleSheet("QPushButton { background-color: #3498DB; color: #FFFFFF; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; }" if index == 1 else default_style)
+        self.btn_view3.setStyleSheet("QPushButton { background-color: #E74C3C; color: #FFFFFF; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; }" if index == 2 else default_style)
+        
+        if index != 1:
+            self.btn_back_to_grid.setVisible(False)
+        else:
+            if self.sensor_stack.currentIndex() == 1:
+                self.btn_back_to_grid.setVisible(True)
 
     def switch_sensor_view(self, imu_index):
         if imu_index == -1:
@@ -763,6 +840,7 @@ class ParkinsonGUI(QMainWindow):
             self.lbl_active_imu.setText(f"IMU {imu_index+1} Detay Gorunumu")
             self.sensor_stack.setCurrentIndex(1)
             self.btn_back_to_grid.setVisible(True)
+            self.switch_graph_view(1) 
 
     def refresh_db_tab_list(self):
         self.db_patient_list.clear()
@@ -870,11 +948,16 @@ class ParkinsonGUI(QMainWindow):
         wave[t_mod < PW_ms] = amp
         wave[(t_mod >= PW_ms) & (t_mod < 2 * PW_ms)] = -amp
 
+        # Yatay Osiloskop Ekrani İcin (Index 2)
         self.curve_stim_1.setData(t, wave)
-        
         padding = 1000 if amp < 9000 else 0
         self.plot_stim_1.setYRange(-(amp + padding), (amp + padding))
         self.plot_stim_1.setXRange(0, 50)
+        
+        # Dikey (Selale) Karma Ekran İcin (Index 0) -> x ve y yer degistirir
+        self.curve_stim_1_mixed.setData(wave, t)
+        self.plot_stim_1_mixed.setXRange(-(amp + padding), (amp + padding))
+        self.plot_stim_1_mixed.setYRange(0, 50)
 
     def update_preview_2(self):
         hz = self.slider_hz_2.value()
@@ -891,11 +974,16 @@ class ParkinsonGUI(QMainWindow):
         wave[t_mod < PW_ms] = amp
         wave[(t_mod >= PW_ms) & (t_mod < 2 * PW_ms)] = -amp
 
+        # Yatay Osiloskop Ekrani İcin (Index 2)
         self.curve_stim_2.setData(t, wave)
-        
         padding = 1000 if amp < 9000 else 0
         self.plot_stim_2.setYRange(-(amp + padding), (amp + padding))
         self.plot_stim_2.setXRange(0, 50)
+        
+        # Dikey (Selale) Karma Ekran İcin (Index 0) -> x ve y yer degistirir
+        self.curve_stim_2_mixed.setData(wave, t)
+        self.plot_stim_2_mixed.setXRange(-(amp + padding), (amp + padding))
+        self.plot_stim_2_mixed.setYRange(0, 50)
 
     def toggle_stimulation_1(self):
         if not self.current_patient:
@@ -909,13 +997,17 @@ class ParkinsonGUI(QMainWindow):
             self.stim_countdown_timer_1.start(1000) 
             self.update_stim_countdown_1() 
             
-            self.curve_stim_1.setPen(pg.mkPen('#E74C3C', width=3)) 
+            self.curve_stim_1.setPen(pg.mkPen('#E74C3C', width=3))
+            self.curve_stim_1_mixed.setPen(pg.mkPen('#E74C3C', width=3))
             self.btn_apply_stim_1.setStyleSheet("QPushButton { background-color: #E74C3C; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
-            self.switch_graph_view(1)
+            
+            if self.main_stack.currentIndex() not in [0, 2]:
+                self.switch_graph_view(2)
         else:
             self.is_stimulating_1 = False
             self.stim_countdown_timer_1.stop()
             self.curve_stim_1.setPen(pg.mkPen('#2ECC71', width=2))
+            self.curve_stim_1_mixed.setPen(pg.mkPen('#2ECC71', width=2))
             self.btn_apply_stim_1.setText("SINYALI BASLAT (K1)")
             self.btn_apply_stim_1.setStyleSheet("QPushButton { background-color: #2ECC71; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
 
@@ -940,12 +1032,16 @@ class ParkinsonGUI(QMainWindow):
             self.update_stim_countdown_2()
             
             self.curve_stim_2.setPen(pg.mkPen('#E74C3C', width=3))
+            self.curve_stim_2_mixed.setPen(pg.mkPen('#E74C3C', width=3))
             self.btn_apply_stim_2.setStyleSheet("QPushButton { background-color: #E74C3C; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
-            self.switch_graph_view(1)
+            
+            if self.main_stack.currentIndex() not in [0, 2]:
+                self.switch_graph_view(2)
         else:
             self.is_stimulating_2 = False
             self.stim_countdown_timer_2.stop()
             self.curve_stim_2.setPen(pg.mkPen('#3498DB', width=2))
+            self.curve_stim_2_mixed.setPen(pg.mkPen('#3498DB', width=2))
             self.btn_apply_stim_2.setText("SINYALI BASLAT (K2)")
             self.btn_apply_stim_2.setStyleSheet("QPushButton { background-color: #3498DB; color: #FFFFFF; border-radius: 6px; padding: 10px; font-weight: bold; }")
 
@@ -1090,15 +1186,19 @@ class ParkinsonGUI(QMainWindow):
                     if len(self.multi_data_buffer[i][key]) > self.buffer_size:
                         self.multi_data_buffer[i][key].pop(0)
                         
-            if self.sensor_stack.currentIndex() == 0:
+            is_grid_visible = (self.main_stack.currentIndex() == 0) or (self.main_stack.currentIndex() == 1 and self.sensor_stack.currentIndex() == 0)
+            if is_grid_visible:
                 self.plot_counter += 1
                 if self.plot_counter % 20 == 0: 
                     for i in range(12):
                         if len(self.multi_data_buffer[i]['ax']) > 0:
                             current_x = self.multi_data_buffer[i]['ax'][-1]
-                            self.imu_buttons[i].setText(f"IMU {i+1}\n\nAktif: {current_x:.2f} G")
+                            txt = f"IMU {i+1}\n\nAktif: {current_x:.2f} G"
+                            self.imu_buttons[i].setText(txt)
+                            self.imu_buttons_mixed[i].setText(txt)
 
-            elif self.sensor_stack.currentIndex() == 1:
+            is_detail_visible = (self.main_stack.currentIndex() == 1 and self.sensor_stack.currentIndex() == 1)
+            if is_detail_visible:
                 self.plot_counter += 1
                 if self.plot_counter % 5 == 0:
                     idx = self.active_detailed_imu
@@ -1118,7 +1218,10 @@ class ParkinsonGUI(QMainWindow):
         else:
             self.worker.stop(); self.worker = None
             self.btn_connect.setText("CIHAZA BAGLAN"); self.btn_record.setEnabled(False)
-            for btn in self.imu_buttons: btn.setText(btn.text().split("\n")[0] + "\n\nDurum: Bekliyor...")
+            for i in range(12): 
+                txt = f"IMU {i+1}\n\nDurum: Bekliyor..."
+                self.imu_buttons[i].setText(txt)
+                self.imu_buttons_mixed[i].setText(txt)
 
     def refresh_ports(self):
         self.combo_ports.clear()
