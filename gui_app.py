@@ -298,7 +298,7 @@ class ParkinsonGUI(QMainWindow):
         left_layout = QVBoxLayout(control_frame)
         left_layout.setContentsMargins(10, 10, 10, 10)
 
-        lbl_patient = QLabel("HASTA SECIMI")
+        lbl_patient = QLabel("HASTA SEÇİMİ")
         lbl_patient.setStyleSheet("color: #2980B9; font-weight: bold; margin-bottom: 5px;")
         left_layout.addWidget(lbl_patient)
 
@@ -321,7 +321,7 @@ class ParkinsonGUI(QMainWindow):
         self.list_patients.itemClicked.connect(self.select_patient)
         left_layout.addWidget(self.list_patients)
 
-        self.lbl_current_patient = QLabel("Hicbiri secilmedi")
+        self.lbl_current_patient = QLabel("Hiç biri seçilmedi")
         self.lbl_current_patient.setStyleSheet("color: #27AE60; font-weight: bold; font-size: 15px; margin-top: 5px;")
         left_layout.addWidget(self.lbl_current_patient)
 
@@ -351,7 +351,7 @@ class ParkinsonGUI(QMainWindow):
         line.setStyleSheet("color: #E0E6ED;")
         left_layout.addWidget(line)
 
-        lbl_device = QLabel("CIHAZ BAGLANTISI")
+        lbl_device = QLabel("CİHAZ BAĞLANTISI")
         lbl_device.setStyleSheet("color: #2980B9; font-weight: bold; margin-left: 1px;")
         left_layout.addWidget(lbl_device)
 
@@ -364,7 +364,7 @@ class ParkinsonGUI(QMainWindow):
         port_row.addWidget(btn_refresh)
         left_layout.addLayout(port_row)
 
-        self.btn_connect = self.create_button("CIHAZA BAGLAN", "#3498DB", "#2980B9")
+        self.btn_connect = self.create_button("CİHAZA BAĞLAN", "#3498DB", "#2980B9")
         self.btn_connect.clicked.connect(self.toggle_connection)
         left_layout.addWidget(self.btn_connect)
 
@@ -387,7 +387,7 @@ class ParkinsonGUI(QMainWindow):
 
         left_layout.addSpacing(10)
 
-        self.btn_record = self.create_button("KAYDI BASLAT", "#E74C3C", "#C0392B")
+        self.btn_record = self.create_button("KAYDI BAŞLAT", "#E74C3C", "#C0392B")
         self.btn_record.setEnabled(False)
         self.btn_record.setMinimumHeight(45)
         self.btn_record.clicked.connect(self.toggle_recording)
@@ -490,8 +490,8 @@ class ParkinsonGUI(QMainWindow):
         lbl_view_title.setStyleSheet("font-weight: bold; color: #7F8C8D; margin-right: 10px;")
         top_bar.addWidget(lbl_view_title)
         
-        self.btn_view1 = self.create_button("1 (Sensorler)", "#3498DB", "#2980B9", text_color="#FFFFFF")
-        self.btn_view2 = self.create_button("2 (Osiloskop)", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
+        self.btn_view1 = self.create_button("1 (Sensörler)", "#3498DB", "#2980B9", text_color="#FFFFFF")
+        self.btn_view2 = self.create_button("2 (Sinyal)", "#ECF0F1", "#BDC3C7", text_color="#2C3E50")
         
         self.btn_view1.clicked.connect(lambda: self.switch_graph_view(0))
         self.btn_view2.clicked.connect(lambda: self.switch_graph_view(1))
