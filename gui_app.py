@@ -304,6 +304,24 @@ class ParkinsonGUI(QMainWindow):
         self.btn_record = self.create_button("KAYDI BAŞLAT", "#E74C3C", "#C0392B"); self.btn_record.setEnabled(False)
         self.btn_record.setMinimumHeight(45); self.btn_record.clicked.connect(self.toggle_recording)
         left_layout.addWidget(self.btn_record); left_layout.addStretch()
+        from PyQt6.QtGui import QPixmap # Görüntü işleme modülü
+        
+        self.lbl_logo = QLabel()
+        self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        logo_path = os.path.join(self.workspace_root, "logo.png")
+        
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path)
+            # Logoyu sol panele sığacak şekilde (örn: 250x100) orantılı olarak küçültür
+            scaled_pixmap = pixmap.scaled(250, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.lbl_logo.setPixmap(scaled_pixmap)
+        else:
+            # Eğer logo.png bulunamazsa yer tutucu bir yazı gösterir
+            self.lbl_logo.setText("[ LOGO BULUNAMADI ]")
+            self.lbl_logo.setStyleSheet("color: #BDC3C7; font-weight: bold; padding: 20px;")
+
+        left_layout.addWidget(self.lbl_logo)
         return control_frame
 
     def _create_slider_widget(self, title, min_val, max_val, default_val, suffix, color, callback):
