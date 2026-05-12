@@ -98,6 +98,73 @@ class SerialWorker(QThread):
 
 
 # ----------------------------------------
+# DOKTOR GİRİŞ EKRANI
+# ----------------------------------------
+class LoginDialog(QDialog):
+    def __init__(self, db, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.setWindowTitle("NeuroMotion - Doktor Girişi")
+        self.setFixedSize(400, 500)
+        self.setStyleSheet("""
+            QDialog { background-color: #2C3E50; }
+            QLabel { color: #ECF0F1; font-size: 14px; font-weight: bold; }
+            QLineEdit { background-color: #34495E; color: white; border: 1px solid #7F8C8D; border-radius: 5px; padding: 10px; font-size: 14px; }
+            QPushButton { background-color: #3498DB; color: white; border-radius: 5px; padding: 12px; font-weight: bold; font-size: 15px; }
+            QPushButton:hover { background-color: #2980B9; }
+            QLabel#Title { font-size: 24px; color: #3498DB; margin-bottom: 20px; }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(15)
+
+        title = QLabel("Klinik Girişi")
+        title.setObjectName("Title")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        layout.addWidget(QLabel("Doktor Adı:"))
+        self.txt_username = QLineEdit()
+        self.txt_username.setPlaceholderText("İsim giriniz...")
+        layout.addWidget(self.txt_username)
+
+        layout.addWidget(QLabel("Şifre:"))
+        self.txt_password = QLineEdit()
+        self.txt_password.setPlaceholderText("Şifre giriniz...")
+        self.txt_password.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addWidget(self.txt_password)
+
+        layout.addSpacing(10)
+        self.btn_login = QPushButton("SİSTEME GİRİŞ YAP")
+        self.btn_login.clicked.connect(self.attempt_login)
+        layout.addWidget(self.btn_login)
+
+        self.lbl_status = QLabel("")
+        self.lbl_status.setStyleSheet("color: #E74C3C; font-size: 12px;")
+        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.lbl_status)
+
+        self.doctor_info = None
+
+    def attempt_login(self):
+        user = self.txt_username.text().strip()
+        pw = self.txt_password.text().strip()
+        
+        if not user or not pw:
+            self.lbl_status.setText("Lütfen tüm alanları doldurun!")
+            return
+
+        doctor = self.db.authenticate_doctor(user, pw)
+        if doctor:
+            self.doctor_info = doctor
+            self.db.log_event("INFO", f"Başarılı giriş yapıldı: {user}", user)
+            self.accept()
+        else:
+            self.db.log_event("WARNING", f"Hatalı giriş denemesi: {user}")
+            self.lbl_status.setText("Hatalı isim veya şifre!")
+
+# ----------------------------------------
 # HASTA GÜNCELLEME PENCERESİ
 # ----------------------------------------
 class UpdatePatientDialog(QDialog):
@@ -144,12 +211,60 @@ class UpdatePatientDialog(QDialog):
         }
 
 # ----------------------------------------
+# ŞİFRE DEĞİŞTİRME PENCERESİ
+# ----------------------------------------
+class ChangePasswordDialog(QDialog):
+    def __init__(self, db, doctor_name, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.doctor_name = doctor_name
+        self.setWindowTitle("Şifre Değiştir")
+        self.setFixedWidth(350)
+        self.setStyleSheet("""
+            QDialog { background-color: #FFFFFF; }
+            QLabel { color: #2C3E50; font-weight: bold; }
+            QLineEdit { background-color: #F8F9F9; color: #2C3E50; border: 1px solid #BDC3C7; border-radius: 5px; padding: 8px; }
+            QPushButton { border-radius: 5px; padding: 10px; font-weight: bold; }
+        """)
+
+        layout = QVBoxLayout(self)
+        self.txt_old_pw = QLineEdit(); self.txt_old_pw.setPlaceholderText("Eski Şifre"); self.txt_old_pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_new_pw = QLineEdit(); self.txt_new_pw.setPlaceholderText("Yeni Şifre"); self.txt_new_pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_new_pw_confirm = QLineEdit(); self.txt_new_pw_confirm.setPlaceholderText("Yeni Şifre (Tekrar)"); self.txt_new_pw_confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        
+        layout.addWidget(QLabel("Eski Şifre:")); layout.addWidget(self.txt_old_pw)
+        layout.addWidget(QLabel("Yeni Şifre:")); layout.addWidget(self.txt_new_pw)
+        layout.addWidget(QLabel("Yeni Şifre Tekrar:")); layout.addWidget(self.txt_new_pw_confirm)
+
+        self.btn_save = QPushButton("Şifreyi Güncelle"); self.btn_save.setStyleSheet("background-color: #2ECC71; color: white;"); self.btn_save.clicked.connect(self.save_password)
+        layout.addWidget(self.btn_save)
+
+    def save_password(self):
+        old = self.txt_old_pw.text().strip()
+        new = self.txt_new_pw.text().strip()
+        confirm = self.txt_new_pw_confirm.text().strip()
+
+        if not old or not new or not confirm:
+            QMessageBox.warning(self, "Hata", "Tüm alanları doldurun!")
+            return
+        if new != confirm:
+            QMessageBox.warning(self, "Hata", "Yeni şifreler uyuşmuyor!")
+            return
+        
+        if self.db.update_doctor_password(self.doctor_name, old, new):
+            QMessageBox.information(self, "Başarılı", "Şifreniz başarıyla değiştirildi.")
+            self.accept()
+        else:
+            QMessageBox.critical(self, "Hata", "Eski şifre hatalı!")
+
+# ----------------------------------------
 # ANA PENCERE (GUI)
 # ----------------------------------------
 class ParkinsonGUI(QMainWindow):
-    def __init__(self):
+    def __init__(self, doctor_info):
         super().__init__()
-        self.setWindowTitle("NeuroMotion Analiz - Klinik Komuta Merkezi v7.1")
+        self.current_doctor = doctor_info
+        self.setWindowTitle(f"NeuroMotion Analiz - Klinik Komuta Merkezi v7.1 | Doktor: {self.current_doctor['name']}")
         self.resize(1500, 950)
         self.plot_counter = 0 
         
@@ -192,7 +307,8 @@ class ParkinsonGUI(QMainWindow):
         self.stim_remaining_2 = 0
         
         self.workspace_root = os.path.dirname(os.path.abspath(__file__))
-        self.db = TestDatabase(os.path.join(self.workspace_root, "test_history.db"))
+        self.db = TestDatabase()
+        self.db.log_event("INFO", f"Uygulama oturumu başladı.", self.current_doctor['name'])
         self.buffer_size = 300
         self.multi_data_buffer = [{'ax': [], 'ay': [], 'az': [], 'gx': [], 'gy': [], 'gz': []} for _ in range(12)]
         self.active_detailed_imu = 0 
@@ -220,6 +336,20 @@ class ParkinsonGUI(QMainWindow):
         header_title = QLabel("Klinik Hasta Yönetimi")
         header_title.setObjectName("HeaderTitle")
         header_layout.addWidget(header_title); header_layout.addStretch()
+
+        # DOKTOR MENÜSÜ (SAĞ ÜST)
+        self.btn_user_menu = QPushButton(f"👤 {self.current_doctor['name']}")
+        self.btn_user_menu.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_user_menu.setStyleSheet("""
+            QPushButton { 
+                background-color: rgba(255,255,255,0.2); color: white; border: 1px solid white; 
+                border-radius: 5px; padding: 5px 15px; font-weight: bold; font-size: 13px;
+            }
+            QPushButton:hover { background-color: rgba(255,255,255,0.3); }
+        """)
+        self.btn_user_menu.clicked.connect(self.show_user_menu)
+        header_layout.addWidget(self.btn_user_menu)
+
         main_layout.addWidget(header_frame)
 
         content_layout = QHBoxLayout(); content_layout.setContentsMargins(0, 0, 10, 10); content_layout.setSpacing(10)
@@ -566,10 +696,11 @@ class ParkinsonGUI(QMainWindow):
     def display_full_patient_info(self, item):
         patient_name = item.text(); details = self.db.get_patient_details(patient_name)
         if details:
-            history_content = "<i>Kayıtlı öykü bulunamadı.</i>"
-            history_file = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", patient_name, "oyku.txt")
-            if os.path.exists(history_file):
-                with open(history_file, 'r', encoding='utf-8') as f: history_content = f.read().replace('\n', '<br>')
+            history_content = details.get('clinical_history')
+            if not history_content:
+                history_content = "<i>Kayıtlı öykü bulunamadı.</i>"
+            else:
+                history_content = history_content.replace('\n', '<br>')
 
             p_folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", patient_name)
             t_folder = os.path.join(p_folder, "VeriSeti_Tremor"); b_folder = os.path.join(p_folder, "VeriSeti_Bradikinezi")
@@ -720,9 +851,10 @@ class ParkinsonGUI(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_data = dialog.get_updated_data()
             try:
-                if hasattr(self.db, 'update_patient_details'): self.db.update_patient_details(patient_name, new_data['age'], new_data['dominant_side'], new_data['doctor'], new_data['phone'])
-            except: pass
-            with open(history_file, 'w', encoding='utf-8') as f: f.write(new_data['history'])
+                if hasattr(self.db, 'update_patient_details'): 
+                    self.db.update_patient_details(patient_name, new_data['age'], new_data['dominant_side'], new_data['doctor'], new_data['phone'], new_data['history'])
+            except Exception as e: 
+                print(f"Güncelleme Hatası: {e}")
             self.refresh_patient_list(); self.refresh_db_tab_list()
 
     def refresh_patient_list(self):
@@ -737,20 +869,22 @@ class ParkinsonGUI(QMainWindow):
     def select_patient(self, item):
         self.current_patient = item.text(); self.lbl_current_patient.setText(f"Hasta: {self.current_patient}")
         details = self.db.get_patient_details(self.current_patient)
-        if details: self.text_patient_details.setText(f"Protokol: {details.get('protocol_no','-')} | Yaş: {details.get('age','-')}")
-        history_file = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient, "oyku.txt")
-        if os.path.exists(history_file):
-            with open(history_file, 'r', encoding='utf-8') as f: self.txt_patient_history.setText(f.read())
-        else: self.txt_patient_history.setText("Kayıtlı bir öykü bulunmuyor.")
+        if details: 
+            self.text_patient_details.setText(f"Protokol: {details.get('protocol_no','-')} | Yaş: {details.get('age','-')}")
+            history = details.get('clinical_history', '')
+            if history:
+                self.txt_patient_history.setText(history)
+            else:
+                self.txt_patient_history.setText("Kayıtlı bir öykü bulunmuyor.")
         self.update_patient_records()
 
     def add_new_patient(self):
         name = self.txt_new_patient_name.text().strip(); protocol = self.txt_protocol.text().strip()
         if not name or not protocol: QMessageBox.warning(self, "Uyarı", "Gerekli alanları doldurun!"); return
-        if self.db.add_patient_with_details(protocol, name, self.spin_age.value(), self.combo_gender.currentText(), self.combo_dominant_side.currentText(), self.spin_onset_year.value(), self.combo_diagnosis.currentText(), self.txt_doctor_name.text().strip(), self.txt_phone.text().strip()):
+        if self.db.add_patient_with_details(protocol, name, self.spin_age.value(), self.combo_gender.currentText(), self.combo_dominant_side.currentText(), self.spin_onset_year.value(), self.combo_diagnosis.currentText(), self.txt_doctor_name.text().strip(), self.txt_phone.text().strip(), self.txt_new_history.toPlainText()):
             p_folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", name)
             os.makedirs(os.path.join(p_folder, "VeriSeti_Tremor"), exist_ok=True); os.makedirs(os.path.join(p_folder, "VeriSeti_Bradikinezi"), exist_ok=True)
-            with open(os.path.join(p_folder, "oyku.txt"), 'w', encoding='utf-8') as f: f.write(self.txt_new_history.toPlainText())
+            self.db.log_event("INFO", f"Yeni hasta kaydı oluşturuldu: {name}", self.current_doctor['name'])
             self.clear_patient_form(); self.refresh_patient_list(); self.refresh_db_tab_list()
         else: QMessageBox.warning(self, "Hata", "Kayıt mevcut!")
 
@@ -759,7 +893,7 @@ class ParkinsonGUI(QMainWindow):
         if not patient_name: return
         if QMessageBox.question(self, 'Onay', f"{patient_name} kaydını tamamen silmek istediğinize emin misiniz?") == QMessageBox.StandardButton.Yes:
             try:
-                self.db.delete_patient(patient_name)
+                self.db.delete_patient(patient_name, self.current_doctor['name'])
                 shutil.rmtree(os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", patient_name), ignore_errors=True)
                 if self.current_patient == patient_name: self.current_patient = None
                 self.refresh_patient_list(); self.refresh_db_tab_list()
@@ -812,7 +946,7 @@ class ParkinsonGUI(QMainWindow):
             for i in range(12): headers.extend([f"IMU{i+1}_AccX", f"IMU{i+1}_AccY", f"IMU{i+1}_AccZ", f"IMU{i+1}_GyroX", f"IMU{i+1}_GyroY", f"IMU{i+1}_GyroZ"])
             writer.writerow(headers)
             writer.writerows(self.recording_data)
-        try: self.db.add_test(self.current_patient, self.current_mode, self.current_filename, 0.0, 0.0, "")
+        try: self.db.add_test(self.current_patient, self.current_mode, self.current_filename, 0.0, 0.0, "", self.current_doctor['name'])
         except: pass
         return True
 
@@ -920,8 +1054,54 @@ class ParkinsonGUI(QMainWindow):
         plot_widget.getAxis('left').setPen('#7F8C8D'); plot_widget.getAxis('bottom').setPen('#7F8C8D')
         plot_widget.addLegend(offset=(10, 10))
 
+    def show_user_menu(self):
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu { background-color: white; border: 1px solid #BDC3C7; }
+            QMenu::item { padding: 8px 25px; color: #2C3E50; }
+            QMenu::item:selected { background-color: #3498DB; color: white; }
+        """)
+        
+        action_change_pw = QAction("🔑 Şifre Değiştir", self)
+        action_change_pw.triggered.connect(self.show_change_password)
+        
+        action_logout = QAction("🚪 Güvenli Çıkış", self)
+        action_logout.triggered.connect(self.logout)
+        
+        menu.addAction(action_change_pw)
+        menu.addSeparator()
+        menu.addAction(action_logout)
+        
+        # Butonun hemen altına açılması için konum hesapla
+        button_pos = self.btn_user_menu.mapToGlobal(self.btn_user_menu.rect().bottomLeft())
+        menu.exec(button_pos)
+
+    def show_change_password(self):
+        dialog = ChangePasswordDialog(self.db, self.current_doctor['name'], self)
+        dialog.exec()
+
+    def logout(self):
+        if QMessageBox.question(self, "Çıkış", "Oturumu kapatmak istediğinize emin misiniz?", 
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            self.db.log_event("INFO", "Oturum kapatıldı.", self.current_doctor['name'])
+            self.close()
+            QApplication.exit(1000)
+
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = ParkinsonGUI()
-    window.show()
-    sys.exit(app.exec())
+    while True:
+        app = QApplication(sys.argv)
+        
+        db = TestDatabase()
+        login = LoginDialog(db)
+        
+        if login.exec() == QDialog.DialogCode.Accepted:
+            window = ParkinsonGUI(login.doctor_info)
+            window.show()
+            exit_code = app.exec()
+            
+            if exit_code == 1000: # Logout kodu
+                continue # Döngü sayesinde tekrar login açılır
+            else:
+                sys.exit(exit_code)
+        else:
+            sys.exit(0)
