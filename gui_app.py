@@ -1,5 +1,5 @@
 # DOSYA ADI: gui_app_new.py
-# VERSIYON: v7.0 (Final - Backend & PDF Ready)
+# VERSIYON: v7.1 (Final - Backend, PDF Ready & Bug Fixes)
 
 import sys
 import os
@@ -9,7 +9,8 @@ import csv
 import serial
 import serial.tools.list_ports
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
+import importlib
 from database import TestDatabase
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
@@ -19,7 +20,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QGroupBox, QGridLayout, QDialog, QMenu, QStackedWidget,
                              QSlider, QFormLayout, QProgressBar, QScrollArea) 
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QFont, QColor, QAction
+from PyQt6.QtGui import QAction
 
 import pyqtgraph as pg
 
@@ -148,7 +149,7 @@ class UpdatePatientDialog(QDialog):
 class ParkinsonGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("NeuroMotion Analiz - Klinik Komuta Merkezi v7.0")
+        self.setWindowTitle("NeuroMotion Analiz - Klinik Komuta Merkezi v7.1")
         self.resize(1500, 950)
         self.plot_counter = 0 
         
@@ -303,6 +304,24 @@ class ParkinsonGUI(QMainWindow):
         self.btn_record = self.create_button("KAYDI BAŞLAT", "#E74C3C", "#C0392B"); self.btn_record.setEnabled(False)
         self.btn_record.setMinimumHeight(45); self.btn_record.clicked.connect(self.toggle_recording)
         left_layout.addWidget(self.btn_record); left_layout.addStretch()
+        from PyQt6.QtGui import QPixmap # Görüntü işleme modülü
+        
+        self.lbl_logo = QLabel()
+        self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        logo_path = os.path.join(self.workspace_root, "logo.png")
+        
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path)
+            # Logoyu sol panele sığacak şekilde (örn: 250x100) orantılı olarak küçültür
+            scaled_pixmap = pixmap.scaled(250, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.lbl_logo.setPixmap(scaled_pixmap)
+        else:
+            # Eğer logo.png bulunamazsa yer tutucu bir yazı gösterir
+            self.lbl_logo.setText("[ LOGO BULUNAMADI ]")
+            self.lbl_logo.setStyleSheet("color: #BDC3C7; font-weight: bold; padding: 20px;")
+
+        left_layout.addWidget(self.lbl_logo)
         return control_frame
 
     def _create_slider_widget(self, title, min_val, max_val, default_val, suffix, color, callback):
@@ -503,7 +522,12 @@ class ParkinsonGUI(QMainWindow):
         return tab
 
     # ---------------- FONKSİYONLAR ----------------
-    
+    def refresh_ports(self):
+        """Eksik olan port yenileme fonksiyonu"""
+        self.combo_ports.clear()
+        for p in serial.tools.list_ports.comports():
+            self.combo_ports.addItem(p.device)
+            
     def toggle_left_panel(self):
         width = self.left_panel.width()
         target_width = 0 if width > 0 else 320
@@ -589,6 +613,9 @@ class ParkinsonGUI(QMainWindow):
             except Exception as e: print(f"Dosya açma hatası: {e}")
         else: QMessageBox.warning(self, "Hata", "Dosya fiziksel olarak bulunamadı!")
 
+    # ==========================================
+    # ÇİFT KANAL ÖNİZLEME VE ZAMANLAYICI FONKSİYONLARI
+    # ==========================================
     def update_preview_1(self):
         hz = self.slider_hz_1.value(); pulse_us = self.slider_pulse_1.value(); amp = self.slider_amp_1.value()
         T_ms = 1000.0 / hz if hz > 0 else 20.0; PW_ms = pulse_us / 1000.0
@@ -601,8 +628,9 @@ class ParkinsonGUI(QMainWindow):
         self.curve_stim_1_mixed.setData(wave, t)
         self.plot_stim_1_mixed.setXRange(-(amp + padding), (amp + padding)); self.plot_stim_1_mixed.setYRange(0, 50)
         
-        # Cihaz çalışırken anlık doz güncelleme (Backend TX)
-        if self.is_stimulating_1 and self.worker: self.worker.send_command(f"STIM_UPDATE:1:{hz}:{pulse_us}:{amp}")
+        # Cihaz çalışırken değer değişirse güncellemeyi gönder (Backend TX)
+        if self.is_stimulating_1 and self.worker:
+            self.worker.send_command(f"STIM_UPDATE:1:{hz}:{pulse_us}:{amp}")
 
     def update_preview_2(self):
         hz = self.slider_hz_2.value(); pulse_us = self.slider_pulse_2.value(); amp = self.slider_amp_2.value()
@@ -616,17 +644,18 @@ class ParkinsonGUI(QMainWindow):
         self.curve_stim_2_mixed.setData(wave, t)
         self.plot_stim_2_mixed.setXRange(-(amp + padding), (amp + padding)); self.plot_stim_2_mixed.setYRange(0, 50)
         
-        # Cihaz çalışırken anlık doz güncelleme (Backend TX)
-        if self.is_stimulating_2 and self.worker: self.worker.send_command(f"STIM_UPDATE:2:{hz}:{pulse_us}:{amp}")
+        # Cihaz çalışırken değer değişirse güncellemeyi gönder (Backend TX)
+        if self.is_stimulating_2 and self.worker:
+            self.worker.send_command(f"STIM_UPDATE:2:{hz}:{pulse_us}:{amp}")
 
     def toggle_stimulation_1(self):
         if not self.current_patient: QMessageBox.warning(self, "Uyarı", "Lütfen önce bir hasta seçin!"); return
         if not self.is_stimulating_1:
             self.is_stimulating_1 = True
             
-            # Başlatma Komutu (Backend TX)
-            hz = self.slider_hz_1.value(); pw = self.slider_pulse_1.value(); amp = self.slider_amp_1.value()
-            if self.worker: self.worker.send_command(f"STIM_START:1:{hz}:{pw}:{amp}")
+            # Backend Başlatma Komutu (TX)
+            hz = self.slider_hz_1.value(); pulse = self.slider_pulse_1.value(); amp = self.slider_amp_1.value()
+            if self.worker: self.worker.send_command(f"STIM_START:1:{hz}:{pulse}:{amp}")
             
             self.stim_remaining_1 = self.slider_dur_1.value() * 60; self.stim_countdown_timer_1.start(1000); self.update_stim_countdown_1() 
             self.curve_stim_1.setPen(pg.mkPen('#E74C3C', width=3)); self.curve_stim_1_mixed.setPen(pg.mkPen('#E74C3C', width=3))
@@ -635,7 +664,7 @@ class ParkinsonGUI(QMainWindow):
         else:
             self.is_stimulating_1 = False; self.stim_countdown_timer_1.stop()
             
-            # Durdurma Komutu (Backend TX)
+            # Backend Durdurma Komutu (TX)
             if self.worker: self.worker.send_command("STIM_STOP:1")
             
             self.curve_stim_1.setPen(pg.mkPen('#2ECC71', width=2)); self.curve_stim_1_mixed.setPen(pg.mkPen('#2ECC71', width=2))
@@ -651,9 +680,9 @@ class ParkinsonGUI(QMainWindow):
         if not self.is_stimulating_2:
             self.is_stimulating_2 = True
             
-            # Başlatma Komutu (Backend TX)
-            hz = self.slider_hz_2.value(); pw = self.slider_pulse_2.value(); amp = self.slider_amp_2.value()
-            if self.worker: self.worker.send_command(f"STIM_START:2:{hz}:{pw}:{amp}")
+            # Backend Başlatma Komutu (TX)
+            hz = self.slider_hz_2.value(); pulse = self.slider_pulse_2.value(); amp = self.slider_amp_2.value()
+            if self.worker: self.worker.send_command(f"STIM_START:2:{hz}:{pulse}:{amp}")
             
             self.stim_remaining_2 = self.slider_dur_2.value() * 60; self.stim_countdown_timer_2.start(1000); self.update_stim_countdown_2()
             self.curve_stim_2.setPen(pg.mkPen('#E74C3C', width=3)); self.curve_stim_2_mixed.setPen(pg.mkPen('#E74C3C', width=3))
@@ -662,7 +691,7 @@ class ParkinsonGUI(QMainWindow):
         else:
             self.is_stimulating_2 = False; self.stim_countdown_timer_2.stop()
             
-            # Durdurma Komutu (Backend TX)
+            # Backend Durdurma Komutu (TX)
             if self.worker: self.worker.send_command("STIM_STOP:2")
             
             self.curve_stim_2.setPen(pg.mkPen('#3498DB', width=2)); self.curve_stim_2_mixed.setPen(pg.mkPen('#3498DB', width=2))
@@ -746,26 +775,75 @@ class ParkinsonGUI(QMainWindow):
         if os.path.exists(os.path.join(p_folder, "VeriSeti_Tremor")): self.list_tremor.addItems([f for f in os.listdir(os.path.join(p_folder, "VeriSeti_Tremor")) if f.endswith(('.pdf', '.csv'))])
         if os.path.exists(os.path.join(p_folder, "VeriSeti_Bradikinezi")): self.list_bradi.addItems([f for f in os.listdir(os.path.join(p_folder, "VeriSeti_Bradikinezi")) if f.endswith(('.pdf', '.csv'))])
 
+    # ==========================================
+    # KAYIT VE ANALIZ (HATA AYIKLAYICILI POP-UP SİSTEMİ)
+    # ==========================================
     def toggle_recording(self):
-        if not self.current_patient: QMessageBox.warning(self, "Uyarı", "Hasta seçin!"); return
+        if not self.current_patient: 
+            QMessageBox.warning(self, "Uyarı", "Lütfen önce bir hasta seçin!")
+            return
+        
         if not self.is_recording:
-            self.is_recording = True; self.recording_data = []; self.btn_record.setText("KAYDI BİTİR VE ANALİZ ET")
+            self.is_recording = True
+            self.recording_data = []
+            self.btn_record.setText("KAYDI BİTİR VE ANALİZ ET")
+            
             self.current_mode = "Tremor" if "Tremor" in self.combo_mode.currentText() else "Bradikinezi"
             folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient, f"VeriSeti_{self.current_mode}")
             os.makedirs(folder, exist_ok=True)
             self.current_filename = os.path.join(folder, f"{self.current_patient}_{self.current_mode}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
         else:
-            self.is_recording = False; self.btn_record.setText("KAYDI BAŞLAT"); self.save_data_to_csv()
-            self.run_analysis() # Veriyi Analize Yollar ve Rapor Çıkarır
+            self.is_recording = False
+            self.btn_record.setText("KAYDI BAŞLAT")
+            
+            # Veri Kaydedildiyse Analize Gönder
+            if self.save_data_to_csv():
+                self.run_analysis()
+                self.update_patient_records()
 
     def save_data_to_csv(self):
-        if not self.recording_data: return
+        if not self.recording_data: 
+            QMessageBox.critical(self, "Veri Yok", "Kayıt süresince cihazdan hiç veri alınamadı!\n\nLütfen donanım bağlantısını ve STM32 veri paket formatını kontrol edin.")
+            return False
+            
         with open(self.current_filename, 'w', newline='') as f:
-            writer = csv.writer(f); headers = []
+            writer = csv.writer(f)
+            headers = []
             for i in range(12): headers.extend([f"IMU{i+1}_AccX", f"IMU{i+1}_AccY", f"IMU{i+1}_AccZ", f"IMU{i+1}_GyroX", f"IMU{i+1}_GyroY", f"IMU{i+1}_GyroZ"])
-            writer.writerow(headers); writer.writerows(self.recording_data)
+            writer.writerow(headers)
+            writer.writerows(self.recording_data)
         try: self.db.add_test(self.current_patient, self.current_mode, self.current_filename, 0.0, 0.0, "")
         except: pass
+        return True
+
+    def run_analysis(self):
+        if not getattr(self, 'current_filename', '') or not os.path.exists(self.current_filename): return
+        try:
+            QApplication.processEvents() 
+            pdf_path = ""
+            
+            # Importlib reload ile analiz dosyası güncellenirse programı kapatmadan algılar
+            if self.current_mode == "Tremor":
+                import analyze_tremor
+                importlib.reload(analyze_tremor)
+                analyze_tremor.run_analysis(self.current_filename)
+                pdf_path = self.current_filename.replace(".csv", "_TREMOR_KLINIK_RAPOR.pdf")
+            else:
+                import analyze_bradykinesia
+                importlib.reload(analyze_bradykinesia)
+                analyze_bradykinesia.run_analysis(self.current_filename)
+                pdf_path = self.current_filename.replace(".csv", "_FINAL_RAPOR.pdf")
+                
+            QApplication.processEvents()
+            
+            # PDF OLUŞTU MU KONTROLÜ (Sessiz Hataları Yakalar)
+            if os.path.exists(pdf_path):
+                QMessageBox.information(self, "Başarılı", "Kayıt ve analiz tamamlandı.\nRapor başarıyla PDF olarak oluşturuldu.")
+            else:
+                QMessageBox.warning(self, "PDF Oluşturulamadı", "CSV verisi başarıyla kaydedildi ancak analiz dosyası PDF'i oluşturmadı!\n\nMuhtemel Sebepler:\n1) Kayıt 2 saniyeden kısa sürmüş olabilir.\n2) Analiz dosyalarında kütüphane eksikliği veya çökme olabilir.\n\nLütfen terminal (konsol) ekranındaki kırmızı hatalara bakın.")
+                
+        except Exception as e: 
+            QMessageBox.critical(self, "Analiz Çöktü", f"Analiz dosyası çalıştırılamadı.\n\nHata: {e}")
 
     def update_plot(self, data):
         if len(data) >= 73:
@@ -817,29 +895,6 @@ class ParkinsonGUI(QMainWindow):
             self.btn_connect.setText("CİHAZA BAĞLAN"); self.btn_record.setEnabled(False)
             for i in range(12): 
                 txt = f"IMU {i+1}\n\nDurum: Bekliyor..."; self.imu_buttons[i].setText(txt); self.imu_buttons_mixed[i].setText(txt)
-
-    def refresh_ports(self):
-        self.combo_ports.clear()
-        for p in serial.tools.list_ports.comports(): self.combo_ports.addItem(p.device)
-
-    # SENİN HAZIRLADIĞIN ANALİZ DOSYALARIYLA (analyze_tremor vb.) TAM UYUMLU KÖPRÜ
-    def run_analysis(self):
-        if not getattr(self, 'current_filename', '') or not os.path.exists(self.current_filename): return
-        try:
-            QApplication.processEvents() 
-            if self.current_mode == "Tremor":
-                import analyze_tremor
-                analyze_tremor.run_analysis(self.current_filename) # Senin analiz koduna yollar
-            else:
-                import analyze_bradykinesia
-                analyze_bradykinesia.run_analysis(self.current_filename) # Senin analiz koduna yollar
-            
-            QApplication.processEvents()
-            
-            # PDF OLUŞTUKTAN SONRA LİSTEYİ GÜNCELLE Kİ ANINDA EKRANDA GÖZÜKSÜN
-            self.update_patient_records()
-            QMessageBox.information(self, "Başarılı", "Kayıt ve analiz başarıyla tamamlandı. Raporlar sekmesinden PDF'i inceleyebilirsiniz.")
-        except Exception as e: QMessageBox.critical(self, "Hata", f"Analiz Hatası: {e}")
 
     def open_pdf_tremor(self, item):
         if not self.current_patient: return

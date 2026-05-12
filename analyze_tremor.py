@@ -127,17 +127,30 @@ def run_analysis(file_path):
 
     try:
         # 1. Veri Okuma
+        # 1. Veri Okuma
         try: df = pd.read_csv(file_path, on_bad_lines='skip')
         except: df = pd.read_csv(file_path, error_bad_lines=False)
 
-        expected_cols = ["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"]
-        if len(df.columns) >= 6: df.columns = expected_cols[:len(df.columns)]
-        for c in expected_cols: df[c] = pd.to_numeric(df[c], errors='coerce')
-        df = df.dropna().reset_index(drop=True)
+        # --- GELECEĞE HAZIR YAKLAŞIM ---
+        # 72 sütunluk (12 IMU) veriyi bozmadan koru, ama şimdilik sadece IMU1'i analize sok.
+        if "IMU1_AccX" in df.columns:
+            df["AccX"] = df["IMU1_AccX"]
+            df["AccY"] = df["IMU1_AccY"]
+            df["AccZ"] = df["IMU1_AccZ"]
+            df["GyroX"] = df["IMU1_GyroX"]
+            df["GyroY"] = df["IMU1_GyroY"]
+            df["GyroZ"] = df["IMU1_GyroZ"]
+        else:
+            # Eğer önceden alınmış sadece 6 sütunlu eski bir test CSV'si gelirse çökmemesi için:
+            expected_cols = ["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"]
+            if len(df.columns) >= 6: 
+                df.rename(columns=dict(zip(df.columns[:6], expected_cols)), inplace=True)
 
-        if len(df) < (FS * 2): # En az 2 saniyelik veri lazım
-            print("❌ Yetersiz veri (En az 2 saniye gerekli).")
-            return
+        # Sadece analiz edilecek ana sütunları sayısal değere çevir ve bozukları at
+        for c in ["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"]: 
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+            
+        df = df.dropna(subset=["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"]).reset_index(drop=True)
 
         # 2. KALİBRASYON UYGULAMA
         if CALIBRATION_EXIST:
