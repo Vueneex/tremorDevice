@@ -961,19 +961,55 @@ class ParkinsonGUI(QMainWindow):
         self.lbl_active_imu = QLabel("IMU 1 Detay Görünümü"); self.lbl_active_imu.setStyleSheet("font-size: 18px; font-weight: bold; color: #2980B9;")
         detail_layout.addWidget(self.lbl_active_imu)
         
-        self.plot_acc = pg.PlotWidget(title="İvme (G-Force) - Kinematik Veri"); self.plot_acc.showGrid(x=True, y=True, alpha=0.5); self.plot_acc.setYRange(-3, 3) 
-        self.customize_plot(self.plot_acc)
-        self.curve_ax = self.plot_acc.plot(pen=pg.mkPen('#E74C3C', width=2), name="X Ekseni")
-        self.curve_ay = self.plot_acc.plot(pen=pg.mkPen('#27AE60', width=2), name="Y Ekseni")
-        self.curve_az = self.plot_acc.plot(pen=pg.mkPen('#2980B9', width=2), name="Z Ekseni")
-        detail_layout.addWidget(self.plot_acc, stretch=1) 
+        # --- KAYDIRILABİLİR ALAN (SCROLL AREA) EKLENİYOR ---
+        self.detail_scroll = QScrollArea()
+        self.detail_scroll.setWidgetResizable(True)
+        self.detail_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.detail_scroll.setStyleSheet("QScrollArea { background-color: transparent; }")
+        
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setSpacing(20)
 
-        self.plot_gyro = pg.PlotWidget(title="Jiroskop (Açısal Hız) - Kinematik Veri"); self.plot_gyro.showGrid(x=True, y=True, alpha=0.5); self.plot_gyro.setYRange(-300, 300) 
-        self.customize_plot(self.plot_gyro)
-        self.curve_gx = self.plot_gyro.plot(pen=pg.mkPen('#E67E22', width=2), name="X Ekseni")
-        self.curve_gy = self.plot_gyro.plot(pen=pg.mkPen('#8E44AD', width=2), name="Y Ekseni")
-        self.curve_gz = self.plot_gyro.plot(pen=pg.mkPen('#16A085', width=2), name="Z Ekseni")
-        detail_layout.addWidget(self.plot_gyro, stretch=1)
+        # 1. GRAFİK: TOTAL GÜÇ (MAGNITUDE / BİLEŞKE VEKTÖR)
+        self.plot_mag = pg.PlotWidget(title="Toplam Vektörel Güç (Magnitude - G)"); self.plot_mag.setMinimumHeight(200)
+        self.plot_mag.showGrid(x=True, y=True, alpha=0.5); self.customize_plot(self.plot_mag)
+        self.curve_mag = self.plot_mag.plot(pen=pg.mkPen('#8E44AD', width=2)) # Mor Renk
+        scroll_layout.addWidget(self.plot_mag)
+        
+        scroll_layout.addStretch() # Elemanları yukarı iter ki grafikler çok esnemesin
+        self.detail_scroll.setWidget(scroll_content)
+        detail_layout.addWidget(self.detail_scroll, stretch=1)
+
+        # 2. GRAFİK: KARMA EKSENLER 
+        self.plot_combined = pg.PlotWidget(title="2. Karma Eksen Görünümü (X, Y, Z)")
+        self.plot_combined.setMinimumHeight(250); self.plot_combined.showGrid(x=True, y=True, alpha=0.5)
+        self.customize_plot(self.plot_combined)
+        # Karma grafik için 3 ayrı eğri tanımlıyoruz
+        self.curve_comb_x = self.plot_combined.plot(pen=pg.mkPen('#E74C3C', width=1.5), name="X")
+        self.curve_comb_y = self.plot_combined.plot(pen=pg.mkPen('#27AE60', width=1.5), name="Y")
+        self.curve_comb_z = self.plot_combined.plot(pen=pg.mkPen('#2980B9', width=1.5), name="Z")
+        scroll_layout.addWidget(self.plot_combined)
+        
+        # 3. GRAFİK: SADECE X EKSENİ
+        self.plot_ax_only = pg.PlotWidget(title="İvme - X Ekseni (İleri/Geri)"); self.plot_ax_only.setMinimumHeight(200)
+        self.plot_ax_only.showGrid(x=True, y=True, alpha=0.5); self.customize_plot(self.plot_ax_only)
+        self.curve_ax = self.plot_ax_only.plot(pen=pg.mkPen('#E74C3C', width=2))
+        scroll_layout.addWidget(self.plot_ax_only)
+        
+        # 4. GRAFİK: SADECE Y EKSENİ
+        self.plot_ay_only = pg.PlotWidget(title="İvme - Y Ekseni (Sağ/Sol)"); self.plot_ay_only.setMinimumHeight(200)
+        self.plot_ay_only.showGrid(x=True, y=True, alpha=0.5); self.customize_plot(self.plot_ay_only)
+        self.curve_ay = self.plot_ay_only.plot(pen=pg.mkPen('#27AE60', width=2))
+        scroll_layout.addWidget(self.plot_ay_only)
+        
+        # 5. GRAFİK: SADECE Z EKSENİ
+        self.plot_az_only = pg.PlotWidget(title="İvme - Z Ekseni (Yukarı/Aşağı)"); self.plot_az_only.setMinimumHeight(200)
+        self.plot_az_only.showGrid(x=True, y=True, alpha=0.5); self.customize_plot(self.plot_az_only)
+        self.curve_az = self.plot_az_only.plot(pen=pg.mkPen('#2980B9', width=2))
+        scroll_layout.addWidget(self.plot_az_only)
+        
+        
         
         self.sensor_stack.addWidget(self.detail_widget); page_sensors_layout.addWidget(self.sensor_stack); self.main_stack.addWidget(page_sensors)
 
@@ -1436,13 +1472,26 @@ class ParkinsonGUI(QMainWindow):
                 self.plot_counter += 1
                 if self.plot_counter % 5 == 0:
                     idx = self.active_detailed_imu
-                    self.curve_ax.setData(self.multi_data_buffer[idx]['ax'])
-                    self.curve_ay.setData(self.multi_data_buffer[idx]['ay'])
-                    self.curve_az.setData(self.multi_data_buffer[idx]['az'])
-                    self.curve_gx.setData(self.multi_data_buffer[idx]['gx'])
-                    self.curve_gy.setData(self.multi_data_buffer[idx]['gy'])
-                    self.curve_gz.setData(self.multi_data_buffer[idx]['gz'])
-
+                    
+                    ax_data = np.array(self.multi_data_buffer[idx]['ax'])
+                    ay_data = np.array(self.multi_data_buffer[idx]['ay'])
+                    az_data = np.array(self.multi_data_buffer[idx]['az'])
+                    
+                    # 1. Toplam Güç Hesapla ve Çiz
+                    if len(ax_data) > 0:
+                        mag_data = np.sqrt(ax_data**2 + ay_data**2 + az_data**2)
+                        self.curve_mag.setData(mag_data)
+                        
+                        # 2. Karma Grafiği Güncelle
+                        self.curve_comb_x.setData(ax_data)
+                        self.curve_comb_y.setData(ay_data)
+                        self.curve_comb_z.setData(az_data)
+                        
+                        # 3. Bireysel Grafikleri Güncelle
+                        self.curve_ax.setData(ax_data)
+                        self.curve_ay.setData(ay_data)
+                        self.curve_az.setData(az_data)
+                        
     def toggle_connection(self):
         if self.worker is None:
             port = self.combo_ports.currentText()
