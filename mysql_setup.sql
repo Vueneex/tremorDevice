@@ -44,13 +44,15 @@ CREATE TABLE IF NOT EXISTS device_calibration (
     calibrated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Doctors Table (Updated with Password)
+-- 4. Doctors Table (Updated)
 CREATE TABLE IF NOT EXISTS doctors (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) UNIQUE NOT NULL,
-    password VARCHAR(255) DEFAULT '1234', -- Default password
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) DEFAULT '1234',
     specialty VARCHAR(100),
-    email VARCHAR(100)
+    is_approved TINYINT(1) DEFAULT 0,
+    is_admin TINYINT(1) DEFAULT 0
 );
 
 -- 5. System Logs Table (New)
@@ -63,5 +65,5 @@ CREATE TABLE IF NOT EXISTS system_logs (
 );
 
 -- Initial Data
-INSERT IGNORE INTO doctors (name, password, specialty) VALUES ('Dr. Aytaç Durmaz', '1234', 'Neurology');
-INSERT IGNORE INTO doctors (name, password, specialty) VALUES ('Admin', 'admin123', 'System Administrator');
+INSERT IGNORE INTO doctors (name, email, password, specialty, is_approved, is_admin) VALUES ('Admin', 'admin@neuromotion.com', 'admin123', 'System Administrator', 1, 1);
+INSERT IGNORE INTO doctors (name, email, password, specialty, is_approved) VALUES ('Dr. Aytaç Durmaz', 'aytac@neuromotion.com', '1234', 'Neurology', 1);

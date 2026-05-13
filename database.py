@@ -9,10 +9,57 @@ class TestDatabase:
     def __init__(self):
         try:
             self.conn = mysql.connector.connect(**DB_CONFIG)
+            self.ensure_columns_exist()
             self.create_tables()
         except mysql.connector.Error as err:
             print(f"Bağlantı Hatası: {err}")
             self.conn = None
+
+    def ensure_columns_exist(self):
+        if not self.conn: return
+        cursor = self.conn.cursor()
+        
+        # Check and add columns to doctors table
+        try:
+            cursor.execute("SHOW COLUMNS FROM doctors")
+            columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'email' not in columns:
+                # Add as NULLable first to avoid unique constraint issues with empty strings
+                cursor.execute("ALTER TABLE doctors ADD COLUMN email VARCHAR(100) NULL AFTER name")
+                self.conn.commit()
+                
+                # Update existing rows with default emails
+                cursor.execute("SELECT id, name FROM doctors")
+                docs = cursor.fetchall()
+                for doc_id, name in docs:
+                    email = name.lower().replace(" ", ".").replace("dr.", "dr") + "@neuromotion.com"
+                    cursor.execute("UPDATE doctors SET email = %s WHERE id = %s", (email, doc_id))
+                
+                # Now make it UNIQUE and NOT NULL
+                cursor.execute("ALTER TABLE doctors MODIFY COLUMN email VARCHAR(100) UNIQUE NOT NULL")
+                print("Added and initialized 'email' column.")
+            
+            if 'is_approved' not in columns:
+                cursor.execute("ALTER TABLE doctors ADD COLUMN is_approved TINYINT(1) DEFAULT 0")
+                # Set existing doctors to approved
+                cursor.execute("UPDATE doctors SET is_approved = 1")
+                print("Added 'is_approved' column and approved existing doctors.")
+                
+            if 'is_admin' not in columns:
+                cursor.execute("ALTER TABLE doctors ADD COLUMN is_admin TINYINT(1) DEFAULT 0")
+                # Set 'Admin' user to admin
+                cursor.execute("UPDATE doctors SET is_admin = 1 WHERE name LIKE '%Admin%'")
+                print("Added 'is_admin' column.")
+                
+            self.conn.commit()
+        except mysql.connector.Error as err:
+            if err.errno == errorcode.ER_NO_SUCH_TABLE:
+                pass # Table will be created in create_tables
+            else:
+                print(f"Sütun Kontrol Hatası: {err}")
+        finally:
+            cursor.close()
 
     def create_tables(self):
         if not self.conn: return
@@ -66,14 +113,16 @@ class TestDatabase:
         )
         """)
 
-        # 4. Doctors Table
+        # 4. Doctors Table (Updated)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS doctors (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(100) UNIQUE NOT NULL,
+            email VARCHAR(100) UNIQUE NOT NULL,
             password VARCHAR(255) DEFAULT '1234',
             specialty VARCHAR(100),
-            email VARCHAR(100)
+            is_approved TINYINT(1) DEFAULT 0,
+            is_admin TINYINT(1) DEFAULT 0
         )
         """)
 
@@ -88,20 +137,127 @@ class TestDatabase:
         )
         """)
         
-        # Initial Data
-        cursor.execute("INSERT IGNORE INTO doctors (name, password, specialty) VALUES ('Dr. Aytaç Durmaz', '1234', 'Neurology')")
+        # Initial Data (Admin & Default Doctor)
+        cursor.execute("INSERT IGNORE INTO doctors (name, email, password, specialty, is_approved, is_admin) VALUES ('Admin', 'admin@neuromotion.com', 'admin123', 'System Administrator', 1, 1)")
+        cursor.execute("INSERT IGNORE INTO doctors (name, email, password, specialty, is_approved) VALUES ('Dr. Aytaç Durmaz', 'aytac@neuromotion.com', '1234', 'Neurology', 1)")
         
         self.conn.commit()
         cursor.close()
 
     # --- Auth Methods ---
-    def authenticate_doctor(self, name, password):
+    def authenticate_doctor(self, identifier, password):
+        """Identifier can be email or name"""
         if not self.conn: return None
         cursor = self.conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM doctors WHERE name=%s AND password=%s", (name, password))
+        query = "SELECT * FROM doctors WHERE (email=%s OR name=%s) AND password=%s"
+        cursor.execute(query, (identifier, identifier, password))
         doctor = cursor.fetchone()
         cursor.close()
+        
+        if doctor and not doctor['is_approved']:
+            return "PENDING"
         return doctor
+
+    def register_doctor(self, name, email, password, specialty, is_approved=0):
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            INSERT INTO doctors (name, email, password, specialty, is_approved, is_admin)
+            VALUES (%s, %s, %s, %s, %s, 0)
+            """, (name, email, password, specialty, 1 if is_approved else 0))
+            self.conn.commit()
+            cursor.close()
+            msg = f"Yeni doktor eklendi (Admin): {name}" if is_approved else f"Yeni doktor kayıt isteği: {name} ({email})"
+            self.log_event("INFO", msg)
+            return True
+        except Exception as e:
+            print(f"Kayıt Hatası: {e}")
+            return False
+
+    def get_pending_doctors(self):
+        if not self.conn: return []
+        cursor = self.conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, name, email, specialty FROM doctors WHERE is_approved = 0")
+        result = cursor.fetchall()
+        cursor.close()
+        return result
+
+    def approve_doctor(self, doctor_id):
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("UPDATE doctors SET is_approved = 1 WHERE id = %s", (doctor_id,))
+            self.conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            print(f"Onay Hatası: {e}")
+            return False
+
+    def reject_doctor(self, doctor_id):
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM doctors WHERE id = %s AND is_approved = 0", (doctor_id,))
+            self.conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            print(f"Reddetme Hatası: {e}")
+            return False
+
+    def delete_doctor(self, doctor_id):
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM doctors WHERE id = %s", (doctor_id,))
+            self.conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            print(f"Doktor Silme Hatası: {e}")
+            return False
+
+    def update_doctor_admin_status(self, doctor_id, is_admin):
+        if not self.conn: return False
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("UPDATE doctors SET is_admin = %s WHERE id = %s", (1 if is_admin else 0, doctor_id))
+            self.conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            print(f"Yetki Güncelleme Hatası: {e}")
+            return False
+
+    def get_system_stats(self):
+        if not self.conn: return {}
+        stats = {}
+        cursor = self.conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM doctors WHERE is_approved = 1")
+        stats['doctors'] = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM doctors WHERE is_approved = 0")
+        stats['pending'] = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM patients")
+        stats['patients'] = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM tests")
+        stats['tests'] = cursor.fetchone()[0]
+        
+        cursor.close()
+        return stats
+
+    def get_all_logs(self, limit=200):
+        if not self.conn: return []
+        cursor = self.conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM system_logs ORDER BY log_date DESC LIMIT %s", (limit,))
+        result = cursor.fetchall()
+        cursor.close()
+        return result
 
     # --- Logging Methods ---
     def log_event(self, level, message, doctor_name="System"):

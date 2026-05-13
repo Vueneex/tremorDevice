@@ -18,7 +18,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QMessageBox, QFrame, QLineEdit, QListWidget,
                              QTabWidget, QSpinBox, QTextEdit, QTextBrowser, 
                              QGroupBox, QGridLayout, QDialog, QMenu, QStackedWidget,
-                             QSlider, QFormLayout, QProgressBar, QScrollArea) 
+                             QSlider, QFormLayout, QProgressBar, QScrollArea,
+                             QTableWidget, QTableWidgetItem, QHeaderView) 
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QAction
 
@@ -104,14 +105,16 @@ class LoginDialog(QDialog):
     def __init__(self, db, parent=None):
         super().__init__(parent)
         self.db = db
-        self.setWindowTitle("NeuroMotion - Doktor Girişi")
-        self.setFixedSize(400, 500)
+        self.setWindowTitle("NeuroMotion - Giriş Ekranı")
+        self.setFixedSize(400, 550)
         self.setStyleSheet("""
             QDialog { background-color: #2C3E50; }
             QLabel { color: #ECF0F1; font-size: 14px; font-weight: bold; }
             QLineEdit { background-color: #34495E; color: white; border: 1px solid #7F8C8D; border-radius: 5px; padding: 10px; font-size: 14px; }
-            QPushButton { background-color: #3498DB; color: white; border-radius: 5px; padding: 12px; font-weight: bold; font-size: 15px; }
-            QPushButton:hover { background-color: #2980B9; }
+            QPushButton#Login { background-color: #3498DB; color: white; border-radius: 5px; padding: 12px; font-weight: bold; font-size: 15px; }
+            QPushButton#Login:hover { background-color: #2980B9; }
+            QPushButton#Register { background-color: transparent; color: #3498DB; border: 1px solid #3498DB; border-radius: 5px; padding: 10px; font-weight: bold; font-size: 13px; }
+            QPushButton#Register:hover { background-color: rgba(52, 152, 219, 0.1); }
             QLabel#Title { font-size: 24px; color: #3498DB; margin-bottom: 20px; }
         """)
 
@@ -119,26 +122,32 @@ class LoginDialog(QDialog):
         layout.setContentsMargins(40, 40, 40, 40)
         layout.setSpacing(15)
 
-        title = QLabel("Klinik Girişi")
+        title = QLabel("NeuroMotion")
         title.setObjectName("Title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        layout.addWidget(QLabel("Doktor Adı:"))
+        layout.addWidget(QLabel("E-posta veya Ad Soyad:"))
         self.txt_username = QLineEdit()
-        self.txt_username.setPlaceholderText("İsim giriniz...")
+        self.txt_username.setPlaceholderText("Giriş kimliği...")
         layout.addWidget(self.txt_username)
 
         layout.addWidget(QLabel("Şifre:"))
         self.txt_password = QLineEdit()
-        self.txt_password.setPlaceholderText("Şifre giriniz...")
+        self.txt_password.setPlaceholderText("Şifre...")
         self.txt_password.setEchoMode(QLineEdit.EchoMode.Password)
         layout.addWidget(self.txt_password)
 
         layout.addSpacing(10)
         self.btn_login = QPushButton("SİSTEME GİRİŞ YAP")
+        self.btn_login.setObjectName("Login")
         self.btn_login.clicked.connect(self.attempt_login)
         layout.addWidget(self.btn_login)
+
+        self.btn_register = QPushButton("YENİ DOKTOR KAYDI")
+        self.btn_register.setObjectName("Register")
+        self.btn_register.clicked.connect(self.open_register)
+        layout.addWidget(self.btn_register)
 
         self.lbl_status = QLabel("")
         self.lbl_status.setStyleSheet("color: #E74C3C; font-size: 12px;")
@@ -155,14 +164,385 @@ class LoginDialog(QDialog):
             self.lbl_status.setText("Lütfen tüm alanları doldurun!")
             return
 
-        doctor = self.db.authenticate_doctor(user, pw)
-        if doctor:
-            self.doctor_info = doctor
+        result = self.db.authenticate_doctor(user, pw)
+        if result == "PENDING":
+            QMessageBox.information(self, "Kayıt Beklemede", "Kaydınız henüz yönetici tarafından onaylanmamış. Lütfen bekleyiniz.")
+        elif result:
+            self.doctor_info = result
             self.db.log_event("INFO", f"Başarılı giriş yapıldı: {user}", user)
             self.accept()
         else:
             self.db.log_event("WARNING", f"Hatalı giriş denemesi: {user}")
-            self.lbl_status.setText("Hatalı isim veya şifre!")
+            self.lbl_status.setText("Hatalı bilgiler veya şifre!")
+
+    def open_register(self):
+        reg = RegisterDialog(self.db, self)
+        reg.exec()
+
+# ----------------------------------------
+# YENİ DOKTOR KAYIT EKRANI
+# ----------------------------------------
+class RegisterDialog(QDialog):
+    def __init__(self, db, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.setWindowTitle("NeuroMotion - Yeni Kayıt")
+        self.setFixedSize(400, 500)
+        self.setStyleSheet("""
+            QDialog { background-color: #2C3E50; }
+            QLabel { color: #ECF0F1; font-size: 13px; font-weight: bold; }
+            QLineEdit { background-color: #34495E; color: white; border: 1px solid #7F8C8D; border-radius: 5px; padding: 8px; }
+            QPushButton { background-color: #2ECC71; color: white; border-radius: 5px; padding: 12px; font-weight: bold; }
+            QPushButton:hover { background-color: #27AE60; }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(10)
+
+        title = QLabel("Yeni Doktor Kaydı")
+        title.setStyleSheet("font-size: 20px; color: #2ECC71; margin-bottom: 10px;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        layout.addWidget(QLabel("Ad Soyad:"))
+        self.txt_name = QLineEdit()
+        layout.addWidget(self.txt_name)
+
+        layout.addWidget(QLabel("E-posta:"))
+        self.txt_email = QLineEdit()
+        layout.addWidget(self.txt_email)
+
+        layout.addWidget(QLabel("Şifre:"))
+        self.txt_pw = QLineEdit(); self.txt_pw.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addWidget(self.txt_pw)
+
+        layout.addWidget(QLabel("Uzmanlık Alanı:"))
+        self.txt_specialty = QLineEdit()
+        layout.addWidget(self.txt_specialty)
+
+        layout.addSpacing(15)
+        btn_submit = QPushButton("KAYIT TALEBİ GÖNDER")
+        btn_submit.clicked.connect(self.submit_registration)
+        layout.addWidget(btn_submit)
+
+    def submit_registration(self):
+        name = self.txt_name.text().strip()
+        email = self.txt_email.text().strip()
+        pw = self.txt_pw.text().strip()
+        spec = self.txt_specialty.text().strip()
+
+        if not all([name, email, pw, spec]):
+            QMessageBox.warning(self, "Hata", "Lütfen tüm alanları doldurun!")
+            return
+
+        if self.db.register_doctor(name, email, pw, spec):
+            QMessageBox.information(self, "Başarılı", "Kayıt talebiniz iletildi. Yönetici onayından sonra giriş yapabilirsiniz.")
+            self.accept()
+        else:
+            QMessageBox.critical(self, "Hata", "Kayıt oluşturulurken bir hata oluştu (E-posta zaten kayıtlı olabilir).")
+
+# ----------------------------------------
+# ADMİN PANELİ (GELİŞMİŞ YÖNETİM)
+# ----------------------------------------
+class AdminPanelDialog(QDialog):
+    def __init__(self, db, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.setWindowTitle("NeuroMotion - Sistem Yönetim Merkezi")
+        self.resize(1000, 700)
+        self.setStyleSheet("""
+            QDialog { background-color: #F0F3F4; }
+            QTabWidget::pane { border: 1px solid #D5DBDB; background: white; border-radius: 5px; }
+            QTabBar::tab { background: #E5E8E8; padding: 12px 25px; margin-right: 2px; border-top-left-radius: 5px; border-top-right-radius: 5px; font-weight: bold; color: #7F8C8D; }
+            QTabBar::tab:selected { background: white; color: #2980B9; border-bottom: 2px solid #2980B9; }
+            QLabel#StatVal { font-size: 32px; font-weight: bold; color: #2C3E50; }
+            QLabel#StatLbl { font-size: 14px; color: #7F8C8D; }
+            QGroupBox#StatCard { background-color: white; border: 1px solid #D5DBDB; border-radius: 10px; }
+            QPushButton#ActionBtn { border-radius: 5px; padding: 8px 15px; font-weight: bold; color: white; }
+        """)
+
+        layout = QVBoxLayout(self)
+        
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._create_dashboard_tab(), "📊 Dashboard")
+        self.tabs.addTab(self._create_users_tab(), "👥 Doktor Yönetimi")
+        self.tabs.addTab(self._create_patients_tab(), "📂 Hasta Havuzu")
+        self.tabs.addTab(self._create_logs_tab(), "📜 Sistem Logları")
+        
+        layout.addWidget(self.tabs)
+        
+        # Alt Bilgi
+        footer = QLabel(f"Yönetici Oturumu Aktif | {datetime.now().strftime('%d.%m.%Y')}")
+        footer.setStyleSheet("color: #95A5A6; font-size: 11px;")
+        layout.addWidget(footer, alignment=Qt.AlignmentFlag.AlignRight)
+
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.update_stats)
+        self.refresh_timer.start(5000)
+        self.update_stats()
+
+    def _create_dashboard_tab(self):
+        tab = QWidget(); layout = QVBoxLayout(tab)
+        
+        grid = QGridLayout()
+        self.card_doctors = self._create_stat_card("Aktif Doktor", "0", "#3498DB")
+        self.card_pending = self._create_stat_card("Bekleyen Onay", "0", "#E67E22")
+        self.card_patients = self._create_stat_card("Toplam Hasta", "0", "#2ECC71")
+        self.card_tests = self._create_stat_card("Yapılan Test", "0", "#9B59B6")
+        
+        grid.addWidget(self.card_doctors, 0, 0); grid.addWidget(self.card_pending, 0, 1)
+        grid.addWidget(self.card_patients, 1, 0); grid.addWidget(self.card_tests, 1, 1)
+        
+        layout.addLayout(grid)
+        layout.addStretch()
+        return tab
+
+    def _create_stat_card(self, label, value, color):
+        card = QGroupBox(); card.setObjectName("StatCard")
+        card.setMinimumHeight(150)
+        lay = QVBoxLayout(card)
+        
+        val_lbl = QLabel(value); val_lbl.setObjectName("StatVal"); val_lbl.setStyleSheet(f"color: {color};")
+        val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        txt_lbl = QLabel(label); txt_lbl.setObjectName("StatLbl")
+        txt_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        lay.addStretch(); lay.addWidget(val_lbl); lay.addWidget(txt_lbl); lay.addStretch()
+        
+        # Kartın değerini güncelleyebilmek için etiketi sakla
+        if not hasattr(self, 'stat_labels'): self.stat_labels = {}
+        self.stat_labels[label] = val_lbl
+        return card
+
+    def _create_users_tab(self):
+        tab = QWidget(); layout = QVBoxLayout(tab)
+        
+        # Üst Kısım: Onay Bekleyenler
+        layout.addWidget(QLabel("⏳ ONAY BEKLEYEN KAYITLAR"))
+        self.list_pending = QListWidget()
+        self.list_pending.setMaximumHeight(200)
+        layout.addWidget(self.list_pending)
+        
+        pend_btns = QHBoxLayout()
+        btn_appr = QPushButton("SEÇİLENİ ONAYLA"); btn_appr.setObjectName("ActionBtn"); btn_appr.setStyleSheet("background-color: #2ECC71;")
+        btn_appr.clicked.connect(self.approve_doctor)
+        btn_rejt = QPushButton("SİL / REDDET"); btn_rejt.setObjectName("ActionBtn"); btn_rejt.setStyleSheet("background-color: #E74C3C;")
+        btn_rejt.clicked.connect(self.reject_doctor)
+        pend_btns.addWidget(btn_appr); pend_btns.addWidget(btn_rejt)
+        layout.addLayout(pend_btns)
+        
+        layout.addSpacing(20)
+        
+        # Alt Kısım: Kayıtlı Doktorlar
+        layout.addWidget(QLabel("✅ SİSTEME KAYITLI DOKTORLAR"))
+        self.table_doctors = QTableWidget(0, 4)
+        self.table_doctors.setHorizontalHeaderLabels(["ID", "Ad Soyad", "E-posta", "Uzmanlık"])
+        self.table_doctors.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.table_doctors)
+        
+        doc_btns = QHBoxLayout()
+        btn_add_doc = QPushButton("+ YENİ DOKTOR EKLE"); btn_add_doc.setObjectName("ActionBtn"); btn_add_doc.setStyleSheet("background-color: #3498DB;")
+        btn_add_doc.clicked.connect(self.add_doctor_direct)
+        btn_del_doc = QPushButton("DOKTORU SİL"); btn_del_doc.setObjectName("ActionBtn"); btn_del_doc.setStyleSheet("background-color: #C0392B;")
+        btn_del_doc.clicked.connect(self.delete_doctor)
+        doc_btns.addWidget(btn_add_doc); doc_btns.addStretch(); doc_btns.addWidget(btn_del_doc)
+        layout.addLayout(doc_btns)
+        
+        self.refresh_users()
+        return tab
+
+    def _create_patients_tab(self):
+        tab = QWidget(); layout = QVBoxLayout(tab)
+        layout.addWidget(QLabel("🔍 TÜM SİSTEMDEKİ HASTALAR"))
+        
+        search_box = QLineEdit(); search_box.setPlaceholderText("Hasta adı veya protokol no ile ara...")
+        layout.addWidget(search_box)
+        
+        self.table_patients = QTableWidget(0, 5)
+        self.table_patients.setHorizontalHeaderLabels(["Protokol", "Ad Soyad", "Yaş", "Tanı", "Doktor"])
+        self.table_patients.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.table_patients)
+        
+        btn_add_patient = QPushButton("+ YENİ HASTA EKLE"); btn_add_patient.setObjectName("ActionBtn"); btn_add_patient.setStyleSheet("background-color: #27AE60;")
+        btn_add_patient.clicked.connect(self.add_patient_direct)
+        layout.addWidget(btn_add_patient, alignment=Qt.AlignmentFlag.AlignRight)
+        
+        search_box.textChanged.connect(self.filter_patients)
+        self.refresh_patients()
+        return tab
+
+    def _create_logs_tab(self):
+        tab = QWidget(); layout = QVBoxLayout(tab)
+        layout.addWidget(QLabel("📋 SİSTEM ETKİNLİK GÜNLÜĞÜ (AUDIT LOGS)"))
+        
+        self.table_logs = QTableWidget(0, 4)
+        self.table_logs.setHorizontalHeaderLabels(["Tarih", "Seviye", "Mesaj", "İşlem Yapan"])
+        self.table_logs.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table_logs.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.table_logs)
+        
+        btn_refresh_logs = QPushButton("LOGLARI YENİLE"); btn_refresh_logs.setObjectName("ActionBtn"); btn_refresh_logs.setStyleSheet("background-color: #34495E;")
+        btn_refresh_logs.clicked.connect(self.refresh_logs)
+        layout.addWidget(btn_refresh_logs, alignment=Qt.AlignmentFlag.AlignRight)
+        
+        self.refresh_logs()
+        return tab
+
+    # --- MANTIK FONKSİYONLARI ---
+    def update_stats(self):
+        stats = self.db.get_system_stats()
+        if stats:
+            self.stat_labels["Aktif Doktor"].setText(str(stats.get('doctors', 0)))
+            self.stat_labels["Bekleyen Onay"].setText(str(stats.get('pending', 0)))
+            self.stat_labels["Toplam Hasta"].setText(str(stats.get('patients', 0)))
+            self.stat_labels["Yapılan Test"].setText(str(stats.get('tests', 0)))
+
+    def refresh_users(self):
+        # Onay Bekleyenler
+        self.list_pending.clear()
+        self.pending_data = self.db.get_pending_doctors()
+        for doc in self.pending_data:
+            self.list_pending.addItem(f"{doc['name']} - {doc['email']} ({doc['specialty']})")
+        
+        # Aktif Doktorlar
+        docs = self.db.get_doctors() # Zaten database.py'de var
+        self.table_doctors.setRowCount(0)
+        self.active_docs_data = []
+        for d in docs:
+            if d['is_approved']:
+                row = self.table_doctors.rowCount()
+                self.table_doctors.insertRow(row)
+                self.table_doctors.setItem(row, 0, QTableWidgetItem(str(d['id'])))
+                self.table_doctors.setItem(row, 1, QTableWidgetItem(d['name']))
+                self.table_doctors.setItem(row, 2, QTableWidgetItem(d['email']))
+                self.table_doctors.setItem(row, 3, QTableWidgetItem(d['specialty']))
+                self.active_docs_data.append(d)
+
+    def refresh_patients(self):
+        patient_names = self.db.get_all_patients()
+        self.table_patients.setRowCount(0)
+        self.all_patients_data = []
+        for name in patient_names:
+            details = self.db.get_patient_details(name)
+            if details:
+                row = self.table_patients.rowCount()
+                self.table_patients.insertRow(row)
+                self.table_patients.setItem(row, 0, QTableWidgetItem(details.get('protocol_no', '-')))
+                self.table_patients.setItem(row, 1, QTableWidgetItem(name))
+                self.table_patients.setItem(row, 2, QTableWidgetItem(str(details.get('age', '-'))))
+                self.table_patients.setItem(row, 3, QTableWidgetItem(details.get('diagnosis', '-')))
+                self.table_patients.setItem(row, 4, QTableWidgetItem(details.get('doctor_name', '-')))
+                self.all_patients_data.append(details)
+
+    def filter_patients(self, text):
+        text = text.lower()
+        for row in range(self.table_patients.rowCount()):
+            match = False
+            for col in range(self.table_patients.columnCount()):
+                item = self.table_patients.item(row, col)
+                if item and text in item.text().lower():
+                    match = True
+                    break
+            self.table_patients.setRowHidden(row, not match)
+
+    def refresh_logs(self):
+        logs = self.db.get_all_logs(200)
+        self.table_logs.setRowCount(0)
+        for l in logs:
+            row = self.table_logs.rowCount()
+            self.table_logs.insertRow(row)
+            date_str = l['log_date'].strftime('%d.%m %H:%M') if hasattr(l['log_date'], 'strftime') else str(l['log_date'])
+            self.table_logs.setItem(row, 0, QTableWidgetItem(date_str))
+            
+            lvl_item = QTableWidgetItem(l['level'])
+            if l['level'] == 'ERROR': lvl_item.setForeground(Qt.GlobalColor.red)
+            elif l['level'] == 'WARNING': lvl_item.setForeground(Qt.GlobalColor.darkYellow)
+            
+            self.table_logs.setItem(row, 1, lvl_item)
+            self.table_logs.setItem(row, 2, QTableWidgetItem(l['message']))
+            self.table_logs.setItem(row, 3, QTableWidgetItem(l['doctor_name']))
+
+    def approve_doctor(self):
+        idx = self.list_pending.currentRow()
+        if idx < 0: return
+        doc_id = self.pending_data[idx]['id']
+        if self.db.approve_doctor(doc_id):
+            QMessageBox.information(self, "Başarılı", "Doktor kaydı onaylandı.")
+            self.refresh_users(); self.update_stats()
+
+    def reject_doctor(self):
+        idx = self.list_pending.currentRow()
+        if idx < 0: return
+        doc_id = self.pending_data[idx]['id']
+        if QMessageBox.question(self, "Onay", "İsteği reddetmek istiyor musunuz?", QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            if self.db.reject_doctor(doc_id): self.refresh_users(); self.update_stats()
+
+    def delete_doctor(self):
+        idx = self.table_doctors.currentRow()
+        if idx < 0: return
+        doc = self.active_docs_data[idx]
+        if doc['name'] == 'Admin':
+            QMessageBox.warning(self, "Hata", "Ana yönetici hesabı silinemez!")
+            return
+        if QMessageBox.question(self, "Kritik Uyarı", f"{doc['name']} isimli doktoru TAMAMEN silmek istediğinize emin misiniz?", QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            if self.db.delete_doctor(doc['id']): self.refresh_users(); self.update_stats()
+
+    def add_doctor_direct(self):
+        reg = RegisterDialog(self.db, self)
+        reg.setWindowTitle("Admin - Yeni Doktor Ekle")
+        # override submit logic for admin
+        def admin_submit():
+            name = reg.txt_name.text().strip(); email = reg.txt_email.text().strip()
+            pw = reg.txt_pw.text().strip(); spec = reg.txt_specialty.text().strip()
+            if not all([name, email, pw, spec]):
+                QMessageBox.warning(reg, "Hata", "Tüm alanları doldurun!"); return
+            if self.db.register_doctor(name, email, pw, spec, is_approved=True):
+                QMessageBox.information(reg, "Başarılı", "Doktor hesabı oluşturuldu ve onaylandı.")
+                reg.accept(); self.refresh_users(); self.update_stats()
+            else:
+                QMessageBox.critical(reg, "Hata", "Kayıt hatası (E-posta zaten var olabilir).")
+        
+        reg.findChild(QPushButton).clicked.disconnect()
+        reg.findChild(QPushButton).clicked.connect(admin_submit)
+        reg.exec()
+
+    def add_patient_direct(self):
+        # Create a simple dialog for patient entry
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Admin - Yeni Hasta Kaydı")
+        dialog.setFixedWidth(400)
+        lay = QVBoxLayout(dialog)
+        form = QFormLayout()
+        
+        txt_proto = QLineEdit(); txt_name = QLineEdit()
+        spin_age = QSpinBox(); spin_age.setRange(0, 150)
+        combo_gen = QComboBox(); combo_gen.addItems(["Erkek", "Kadın", "Diğer"])
+        combo_side = QComboBox(); combo_side.addItems(["Sağ", "Sol", "Çift Taraf"])
+        combo_diag = QComboBox(); combo_diag.addItems(["Parkinson", "Essential Tremor", "Diğer"])
+        txt_doc = QLineEdit("Sistem Yöneticisi")
+        txt_phone = QLineEdit()
+        
+        form.addRow("Protokol No:", txt_proto); form.addRow("Hasta Adı:", txt_name)
+        form.addRow("Yaş:", spin_age); form.addRow("Cinsiyet:", combo_gen)
+        form.addRow("Baskın Taraf:", combo_side); form.addRow("Tanı:", combo_diag)
+        form.addRow("Doktor:", txt_doc); form.addRow("Telefon:", txt_phone)
+        lay.addLayout(form)
+        
+        btn_save = QPushButton("HASTAYI KAYDET"); btn_save.setStyleSheet("background-color: #2ECC71; color: white; padding: 10px; font-weight: bold;")
+        lay.addWidget(btn_save)
+        
+        def save():
+            if not txt_proto.text() or not txt_name.text():
+                QMessageBox.warning(dialog, "Hata", "Protokol ve Ad alanları zorunludur!"); return
+            if self.db.add_patient_with_details(txt_proto.text(), txt_name.text(), spin_age.value(), combo_gen.currentText(), combo_side.currentText(), datetime.now().year, combo_diag.currentText(), txt_doc.text(), txt_phone.text()):
+                QMessageBox.information(dialog, "Başarılı", "Hasta sisteme eklendi.")
+                dialog.accept(); self.refresh_patients(); self.update_stats()
+            else:
+                QMessageBox.critical(dialog, "Hata", "Kayıt hatası (Protokol no veya isim çakışması).")
+        
+        btn_save.clicked.connect(save)
+        dialog.exec()
 
 # ----------------------------------------
 # HASTA GÜNCELLEME PENCERESİ
@@ -1095,13 +1475,19 @@ if __name__ == "__main__":
         login = LoginDialog(db)
         
         if login.exec() == QDialog.DialogCode.Accepted:
-            window = ParkinsonGUI(login.doctor_info)
-            window.show()
-            exit_code = app.exec()
-            
-            if exit_code == 1000: # Logout kodu
-                continue # Döngü sayesinde tekrar login açılır
+            if login.doctor_info.get('is_admin'):
+                admin = AdminPanelDialog(db)
+                admin.exec()
+                # Admin panelinden çıkınca tekrar login ekranına dön
+                continue
             else:
-                sys.exit(exit_code)
+                window = ParkinsonGUI(login.doctor_info)
+                window.show()
+                exit_code = app.exec()
+                
+                if exit_code == 1000: # Logout kodu
+                    continue # Döngü sayesinde tekrar login açılır
+                else:
+                    sys.exit(exit_code)
         else:
             sys.exit(0)
