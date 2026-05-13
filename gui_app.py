@@ -882,8 +882,25 @@ class ParkinsonGUI(QMainWindow):
         self.main_stack = QStackedWidget()
         
         # KATMAN 1 (Index 0): KARMA GÖRÜNÜM
-        page_mixed = QWidget(); page_mixed_layout = QHBoxLayout(page_mixed); page_mixed_layout.setContentsMargins(0, 0, 0, 0); page_mixed_layout.setSpacing(10)
-        mixed_grid_widget = QWidget(); mixed_grid_layout = QGridLayout(mixed_grid_widget); mixed_grid_layout.setSpacing(10); mixed_grid_layout.setContentsMargins(0, 0, 0, 0)
+        # KATMAN 1 (Index 0): KARMA GÖRÜNÜM
+        page_mixed = QWidget(); page_mixed_layout = QVBoxLayout(page_mixed); page_mixed_layout.setContentsMargins(0, 0, 0, 0); page_mixed_layout.setSpacing(10)
+        
+        # 1. Kısım: IMU Butonları (Sol El ve Sağ El Ayrımı - 6x2 Genel Düzen)
+        top_imu_layout = QHBoxLayout()
+        top_imu_layout.setSpacing(15) # Gruplar ve çizgi arasına nefes alma payı
+        
+        # SOL EL GRUBU (IMU 1-6)
+        left_grid_widget = QWidget(); left_grid_layout = QGridLayout(left_grid_widget)
+        left_grid_layout.setSpacing(10); left_grid_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # AYIRICI İNCE ÇİZGİ
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.VLine)
+        divider.setStyleSheet("border: 2px solid #34495E; max-width: 2px; border-radius: 1px;")
+        
+        # SAĞ EL GRUBU (IMU 7-12)
+        right_grid_widget = QWidget(); right_grid_layout = QGridLayout(right_grid_widget)
+        right_grid_layout.setSpacing(10); right_grid_layout.setContentsMargins(0, 0, 0, 0)
         
         self.imu_buttons_mixed = []
         for i in range(12):
@@ -891,25 +908,42 @@ class ParkinsonGUI(QMainWindow):
             btn.setProperty("class", "imu_card")
             btn.setSizePolicy(btn.sizePolicy().Policy.Expanding, btn.sizePolicy().Policy.Expanding)
             btn.clicked.connect(lambda checked, idx=i: self.switch_sensor_view(idx))
-            self.imu_buttons_mixed.append(btn); mixed_grid_layout.addWidget(btn, i // 4, i % 4)
             
-        page_mixed_layout.addWidget(mixed_grid_widget, stretch=5)
-        mixed_stim_widget = QWidget(); mixed_stim_layout = QHBoxLayout(mixed_stim_widget); mixed_stim_layout.setSpacing(10); mixed_stim_layout.setContentsMargins(0, 0, 0, 0)
+            # MATEMATİK: İlk 6 sensörü SOLA, son 6 sensörü SAĞA dağıtıyoruz
+            if i < 6:
+                # 3 sütun, 2 satır şeklinde sola dizer
+                left_grid_layout.addWidget(btn, i // 3, i % 3)
+            else:
+                # 3 sütun, 2 satır şeklinde sağa dizer
+                right_grid_layout.addWidget(btn, (i - 6) // 3, (i - 6) % 3)
+                
+            self.imu_buttons_mixed.append(btn)
+            
+        top_imu_layout.addWidget(left_grid_widget, stretch=5)
+        top_imu_layout.addWidget(divider, stretch=0)
+        top_imu_layout.addWidget(right_grid_widget, stretch=5)
         
-        self.plot_stim_1_mixed = pg.PlotWidget(title="Kanal 1"); self.plot_stim_1_mixed.showGrid(x=True, y=True, alpha=0.5); self.plot_stim_1_mixed.setBackground('#111111')
+        
+        page_mixed_layout.addLayout(top_imu_layout, stretch=2)
+
+        # 2. Kısım: Yatay Grafik Alanı (Sensörler ile Alt Parametrelerin Arasında)
+        mixed_stim_widget = QWidget(); mixed_stim_layout = QHBoxLayout(mixed_stim_widget); mixed_stim_layout.setSpacing(10); mixed_stim_layout.setContentsMargins(0, 0, 0, 0)
+        mixed_stim_widget.setMaximumHeight(160) # <-- Grafiklerin dikey boyutunu küçülttük
+        
+        self.plot_stim_1_mixed = pg.PlotWidget(title="Kanal 1 Önizleme"); self.plot_stim_1_mixed.showGrid(x=True, y=True, alpha=0.5); self.plot_stim_1_mixed.setBackground('#111111')
         self.plot_stim_1_mixed.getAxis('left').setPen('#2ECC71'); self.plot_stim_1_mixed.getAxis('bottom').setPen('#2ECC71')
-        self.plot_stim_1_mixed.setLabel('left', 'Zaman', units='ms'); self.plot_stim_1_mixed.setLabel('bottom', 'Akım', units='µA')
-        self.plot_stim_1_mixed.getPlotItem().invertY(True) 
+        self.plot_stim_1_mixed.getAxis('left').setWidth(45) 
+        self.plot_stim_1_mixed.setLabel('bottom', 'Zaman', units='ms'); self.plot_stim_1_mixed.setLabel('left', 'Akım', units='µA')
         self.curve_stim_1_mixed = self.plot_stim_1_mixed.plot(pen=pg.mkPen('#2ECC71', width=2))
         
-        self.plot_stim_2_mixed = pg.PlotWidget(title="Kanal 2"); self.plot_stim_2_mixed.showGrid(x=True, y=True, alpha=0.5); self.plot_stim_2_mixed.setBackground('#111111')
+        self.plot_stim_2_mixed = pg.PlotWidget(title="Kanal 2 Önizleme"); self.plot_stim_2_mixed.showGrid(x=True, y=True, alpha=0.5); self.plot_stim_2_mixed.setBackground('#111111')
         self.plot_stim_2_mixed.getAxis('left').setPen('#3498DB'); self.plot_stim_2_mixed.getAxis('bottom').setPen('#3498DB')
-        self.plot_stim_2_mixed.setLabel('left', 'Zaman', units='ms'); self.plot_stim_2_mixed.setLabel('bottom', 'Akım', units='µA')
-        self.plot_stim_2_mixed.getPlotItem().invertY(True) 
+        self.plot_stim_2_mixed.getAxis('left').setWidth(45) 
+        self.plot_stim_2_mixed.setLabel('bottom', 'Zaman', units='ms'); self.plot_stim_2_mixed.setLabel('left', 'Akım', units='µA')
         self.curve_stim_2_mixed = self.plot_stim_2_mixed.plot(pen=pg.mkPen('#3498DB', width=2))
         
         mixed_stim_layout.addWidget(self.plot_stim_1_mixed); mixed_stim_layout.addWidget(self.plot_stim_2_mixed)
-        page_mixed_layout.addWidget(mixed_stim_widget, stretch=4); self.main_stack.addWidget(page_mixed)
+        page_mixed_layout.addWidget(mixed_stim_widget, stretch=0); self.main_stack.addWidget(page_mixed)
 
         # KATMAN 2 (Index 1): SADECE SENSÖR GÖRÜNÜMÜ
         page_sensors = QWidget(); page_sensors_layout = QVBoxLayout(page_sensors); page_sensors_layout.setContentsMargins(0,0,0,0)
@@ -1136,8 +1170,10 @@ class ParkinsonGUI(QMainWindow):
         self.curve_stim_1.setData(t, wave)
         padding = 1000 if amp < 9000 else 0
         self.plot_stim_1.setYRange(-(amp + padding), (amp + padding)); self.plot_stim_1.setXRange(0, 50)
-        self.curve_stim_1_mixed.setData(wave, t)
-        self.plot_stim_1_mixed.setXRange(-(amp + padding), (amp + padding)); self.plot_stim_1_mixed.setYRange(0, 50)
+        
+        # --- YATAY ÇİZİM İÇİN GÜNCELLENEN KISIM ---
+        self.curve_stim_1_mixed.setData(t, wave)
+        self.plot_stim_1_mixed.setYRange(-(amp + padding), (amp + padding)); self.plot_stim_1_mixed.setXRange(0, 50)
         
         # Cihaz çalışırken değer değişirse güncellemeyi gönder (Backend TX)
         if self.is_stimulating_1 and self.worker:
@@ -1152,8 +1188,10 @@ class ParkinsonGUI(QMainWindow):
         self.curve_stim_2.setData(t, wave)
         padding = 1000 if amp < 9000 else 0
         self.plot_stim_2.setYRange(-(amp + padding), (amp + padding)); self.plot_stim_2.setXRange(0, 50)
-        self.curve_stim_2_mixed.setData(wave, t)
-        self.plot_stim_2_mixed.setXRange(-(amp + padding), (amp + padding)); self.plot_stim_2_mixed.setYRange(0, 50)
+        
+        # --- YATAY ÇİZİM İÇİN GÜNCELLENEN KISIM ---
+        self.curve_stim_2_mixed.setData(t, wave)
+        self.plot_stim_2_mixed.setYRange(-(amp + padding), (amp + padding)); self.plot_stim_2_mixed.setXRange(0, 50)
         
         # Cihaz çalışırken değer değişirse güncellemeyi gönder (Backend TX)
         if self.is_stimulating_2 and self.worker:
@@ -1332,21 +1370,28 @@ class ParkinsonGUI(QMainWindow):
 
     def run_analysis(self):
         if not getattr(self, 'current_filename', '') or not os.path.exists(self.current_filename): return
+        
+        # Stimülasyon parametrelerini topla
+        stim_data = {
+            "ch1": {"hz": self.slider_hz_1.value(), "pw": self.slider_pulse_1.value(), "amp": self.slider_amp_1.value()},
+            "ch2": {"hz": self.slider_hz_2.value(), "pw": self.slider_pulse_2.value(), "amp": self.slider_amp_2.value()}
+        }
+
         try:
             QApplication.processEvents() 
-            pdf_path = ""
-            
-            # Importlib reload ile analiz dosyası güncellenirse programı kapatmadan algılar
             if self.current_mode == "Tremor":
                 import analyze_tremor
                 importlib.reload(analyze_tremor)
-                analyze_tremor.run_analysis(self.current_filename)
+                # Parametreleri gönderiyoruz
+                analyze_tremor.run_analysis(self.current_filename, stim_data)
                 pdf_path = self.current_filename.replace(".csv", "_TREMOR_KLINIK_RAPOR.pdf")
             else:
                 import analyze_bradykinesia
                 importlib.reload(analyze_bradykinesia)
-                analyze_bradykinesia.run_analysis(self.current_filename)
+                # Parametreleri gönderiyoruz
+                analyze_bradykinesia.run_analysis(self.current_filename, stim_data)
                 pdf_path = self.current_filename.replace(".csv", "_FINAL_RAPOR.pdf")
+            # ... geri kalan hata kontrolleri aynı kalabilir ...
                 
             QApplication.processEvents()
             

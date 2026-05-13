@@ -120,7 +120,7 @@ def draw_score_bar(ax, label, score, y_pos, color, inverse=False):
 # 📊 ANA ANALİZ FONKSİYONU (main_system.py tarafından çağrılır)
 # ========================================================
 
-def run_analysis(file_path):
+def run_analysis(file_path, stim_params=None):
     print(f"\n{'='*60}")
     print(f"🌊 MDS-UPDRS TREMOR (TİTREME) ANALİZİ")
     print(f"{'='*60}")
@@ -230,6 +230,18 @@ def run_analysis(file_path):
             ax2.set_xlim(TREMOR_BAND[0], TREMOR_BAND[1])
             ax2.grid(which='major', color=COLOR_GRID_MAJOR, linestyle='-', linewidth=0.8, alpha=0.8)
 
+            # --- STİMÜLASYON BİLGİSİ (GÜVENLİ YÖNTEM) ---
+            if stim_params:
+                s1 = stim_params['ch1']
+                s2 = stim_params['ch2']
+                stim_text = (f"UYGULANAN STİMÜLASYON: "
+                             f"Kanal 1 ({s1['hz']}Hz, {s1['pw']}us, {s1['amp']}uA) | "
+                             f"Kanal 2 ({s2['hz']}Hz, {s2['pw']}us, {s2['amp']}uA)")
+                
+                # Sayfanın en altına (Y: 0.03) ortalayarak yazdırır, grafikleri bozmaz.
+                fig.text(0.5, 0.03, stim_text, ha='center', va='center', fontsize=10, fontweight='bold',
+                         bbox=dict(facecolor='#EBF5FB', edgecolor='#2980B9', boxstyle='round,pad=0.5'))
+
             # --- KLİNİK BİLGİ KUTUSU ---
             info_ax = fig.add_axes([0.1, 0.22, 0.8, 0.10])
             info_ax.axis('off')
@@ -242,9 +254,6 @@ def run_analysis(file_path):
 
             # --- YENİ EKLENEN BÖLÜM: BASKIN FREKANS GÖSTERGESİ ---
             # Frekans rengini belirle (4-7 Hz arası Kırmızı, yoksa Yeşil/Mavi)
-            freq_color = "#c0392b" if (4.0 <= dominant_freq <= 7.0 and updrs_score > 0) else "#2980b9"
-            
-            # Sayfanın altına yerleştir (Performans karnesinin hemen üstüne)
             freq_color = "#c0392b" if (4.0 <= dominant_freq <= 7.0 and updrs_score > 0) else "#2980b9"
             fig.text(0.60, 0.18, f"BASKIN FREKANS: {dominant_freq:.1f} Hz", 
                      ha='right', va='center', fontsize=12, fontweight='bold', color='white',
@@ -265,7 +274,7 @@ def run_analysis(file_path):
                      ha='center', fontsize=8, color='#95a5a6')
 
             pdf.savefig(fig)
-            plt.close()
+            plt.close(fig)
             print(f"✅ Klinik Tremor Raporu Hazır: {report_filename}")
 
     except Exception as e:

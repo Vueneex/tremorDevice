@@ -78,7 +78,7 @@ def draw_score_bar(ax, label, score, y_pos, color):
     # Skor yazısı
     ax.text(0.92, y_pos, f"%{int(score)}", fontsize=12, fontweight='bold', va='center', color=color)
 
-def run_analysis(file_path): 
+def run_analysis(file_path, stim_params=None): 
     print(f"\n{'='*60}")
     print(f"🐢 MDS-UPDRS + PERFORMANS ANALİZİ")
     print(f"{'='*60}")
@@ -226,6 +226,17 @@ def run_analysis(file_path):
             ax2.set_title("Ritim Analizi", fontsize=10, fontweight='bold')
             ax2.set_ylabel("Süre (sn)")
             ax2.grid(True, linestyle=':', alpha=0.6)
+
+        if stim_params:
+            stim_ax = fig.add_axes([0.1, 0.15, 0.8, 0.06])
+            stim_ax.axis('off')
+            s1 = stim_params['ch1']
+            s2 = stim_params['ch2']
+            stim_text = (f"UYGULANAN STİMÜLASYON PARAMETRELERİ\n"
+                         f"Kanal 1: {s1['hz']}Hz, {s1['pw']}us, {s1['amp']}uA | "
+                         f"Kanal 2: {s2['hz']}Hz, {s2['pw']}us, {s2['amp']}uA")
+            stim_ax.text(0.5, 0.5, stim_text, ha='center', va='center', fontsize=9, fontweight='bold',
+                         bbox=dict(facecolor='#fdf2e9', edgecolor='#e67e22', boxstyle='round,pad=0.5'))   
 
             # UPDRS Bilgi Kutusu
             info_ax = fig.add_axes([0.1, 0.22, 0.8, 0.12])
