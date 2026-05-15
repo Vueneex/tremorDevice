@@ -933,7 +933,7 @@ class ParkinsonGUI(QMainWindow):
         self.plot_stim_1_mixed = pg.PlotWidget(title="Kanal 1 Önizleme"); self.plot_stim_1_mixed.showGrid(x=True, y=True, alpha=0.5); self.plot_stim_1_mixed.setBackground('#111111')
         self.plot_stim_1_mixed.getAxis('left').setPen('#2ECC71'); self.plot_stim_1_mixed.getAxis('bottom').setPen('#2ECC71')
         self.plot_stim_1_mixed.getAxis('left').setWidth(45) 
-        self.plot_stim_1_mixed.setLabel('bottom', 'Zaman', units='ms'); self.plot_stim_1_mixed.setLabel('left', 'Akım', units='µA')
+        self.plot_stim_1_mixed.setLabel('bottom', 'Zaman', units='ms'); self.plot_stim_1_mixed.setLabel('left', 'Akım', units='mA')
         self.curve_stim_1_mixed = self.plot_stim_1_mixed.plot(pen=pg.mkPen('#2ECC71', width=2))
         
         self.plot_stim_2_mixed = pg.PlotWidget(title="Kanal 2 Önizleme"); self.plot_stim_2_mixed.showGrid(x=True, y=True, alpha=0.5); self.plot_stim_2_mixed.setBackground('#111111')
@@ -1023,7 +1023,7 @@ class ParkinsonGUI(QMainWindow):
         
         self.plot_stim_2 = pg.PlotWidget(title="Kanal 2 - Sinyal Önizlemesi"); self.plot_stim_2.showGrid(x=True, y=True, alpha=0.5); self.plot_stim_2.setBackground('#111111') 
         self.plot_stim_2.getAxis('left').setPen('#3498DB'); self.plot_stim_2.getAxis('bottom').setPen('#3498DB')
-        self.plot_stim_2.setLabel('bottom', 'Zaman', units='ms'); self.plot_stim_2.setLabel('left', 'Akım', units='µA')
+        self.plot_stim_2.setLabel('bottom', 'Zaman', units='ms'); self.plot_stim_2.setLabel('left', 'Akım', units='mA')
         self.curve_stim_2 = self.plot_stim_2.plot(pen=pg.mkPen('#3498DB', width=2)); page_stim_layout.addWidget(self.plot_stim_2)
 
         self.main_stack.addWidget(page_stim); layout.addWidget(self.main_stack, stretch=1)
@@ -1034,7 +1034,7 @@ class ParkinsonGUI(QMainWindow):
         stim_layout_1 = QHBoxLayout(); lbl_ch1 = QLabel("KANAL 1:"); lbl_ch1.setStyleSheet("font-weight: bold; color: #2ECC71;"); stim_layout_1.addWidget(lbl_ch1)
         w_hz_1, self.slider_hz_1 = self._create_slider_widget("Frekans", 1, 150, 50, "Hz", "#2ECC71", self.update_preview_1)
         w_pulse_1, self.slider_pulse_1 = self._create_slider_widget("Genişlik", 50, 1000, 200, "us", "#2ECC71", self.update_preview_1)
-        w_amp_1, self.slider_amp_1 = self._create_slider_widget("Şiddet", 0, 10000, 1500, "uA", "#2ECC71", self.update_preview_1)
+        w_amp_1, self.slider_amp_1 = self._create_slider_widget("Şiddet", 0, 100, 2, "mA", "#2ECC71", self.update_preview_1)
         w_dur_1, self.slider_dur_1 = self._create_slider_widget("Süre", 1, 120, 20, "Dk", "#2ECC71", None)
         stim_layout_1.addWidget(w_hz_1); stim_layout_1.addWidget(w_pulse_1); stim_layout_1.addWidget(w_amp_1); stim_layout_1.addWidget(w_dur_1)
         self.btn_apply_stim_1 = self.create_button("SİNYALİ BAŞLAT (K1)", "#2ECC71", "#27AE60"); self.btn_apply_stim_1.clicked.connect(self.toggle_stimulation_1) 
@@ -1043,7 +1043,7 @@ class ParkinsonGUI(QMainWindow):
         stim_layout_2 = QHBoxLayout(); lbl_ch2 = QLabel("KANAL 2:"); lbl_ch2.setStyleSheet("font-weight: bold; color: #3498DB;"); stim_layout_2.addWidget(lbl_ch2)
         w_hz_2, self.slider_hz_2 = self._create_slider_widget("Frekans", 1, 150, 50, "Hz", "#3498DB", self.update_preview_2)
         w_pulse_2, self.slider_pulse_2 = self._create_slider_widget("Genişlik", 50, 1000, 200, "us", "#3498DB", self.update_preview_2)
-        w_amp_2, self.slider_amp_2 = self._create_slider_widget("Şiddet", 0, 10000, 1500, "uA", "#3498DB", self.update_preview_2)
+        w_amp_2, self.slider_amp_2 = self._create_slider_widget("Şiddet", 0, 100, 2, "mA", "#3498DB", self.update_preview_2)
         w_dur_2, self.slider_dur_2 = self._create_slider_widget("Süre", 1, 120, 20, "Dk", "#3498DB", None)
         stim_layout_2.addWidget(w_hz_2); stim_layout_2.addWidget(w_pulse_2); stim_layout_2.addWidget(w_amp_2); stim_layout_2.addWidget(w_dur_2)
         self.btn_apply_stim_2 = self.create_button("SİNYALİ BAŞLAT (K2)", "#3498DB", "#2980B9"); self.btn_apply_stim_2.clicked.connect(self.toggle_stimulation_2) 
