@@ -1032,7 +1032,7 @@ class ParkinsonGUI(QMainWindow):
         group_stim = QGroupBox("Terapötik Stimülasyon Yönetimi"); group_stim.setMaximumHeight(220); stim_main_layout = QVBoxLayout(group_stim)
         
         stim_layout_1 = QHBoxLayout(); lbl_ch1 = QLabel("KANAL 1:"); lbl_ch1.setStyleSheet("font-weight: bold; color: #2ECC71;"); stim_layout_1.addWidget(lbl_ch1)
-        w_hz_1, self.slider_hz_1 = self._create_slider_widget("Frekans", 1, 150, 50, "Hz", "#2ECC71", self.update_preview_1)
+        w_hz_1, self.slider_hz_1 = self._create_slider_widget("Frekans", 1, 200, 50, "Hz", "#2ECC71", self.update_preview_1)
         w_pulse_1, self.slider_pulse_1 = self._create_slider_widget("Genişlik", 50, 1000, 200, "us", "#2ECC71", self.update_preview_1)
         w_amp_1, self.slider_amp_1 = self._create_slider_widget("Şiddet", 0, 100, 2, "mA", "#2ECC71", self.update_preview_1)
         w_dur_1, self.slider_dur_1 = self._create_slider_widget("Süre", 1, 120, 20, "Dk", "#2ECC71", None)
@@ -1041,7 +1041,7 @@ class ParkinsonGUI(QMainWindow):
         stim_layout_1.addWidget(self.btn_apply_stim_1); stim_main_layout.addLayout(stim_layout_1)
         
         stim_layout_2 = QHBoxLayout(); lbl_ch2 = QLabel("KANAL 2:"); lbl_ch2.setStyleSheet("font-weight: bold; color: #3498DB;"); stim_layout_2.addWidget(lbl_ch2)
-        w_hz_2, self.slider_hz_2 = self._create_slider_widget("Frekans", 1, 150, 50, "Hz", "#3498DB", self.update_preview_2)
+        w_hz_2, self.slider_hz_2 = self._create_slider_widget("Frekans", 1, 200, 50, "Hz", "#3498DB", self.update_preview_2)
         w_pulse_2, self.slider_pulse_2 = self._create_slider_widget("Genişlik", 50, 1000, 200, "us", "#3498DB", self.update_preview_2)
         w_amp_2, self.slider_amp_2 = self._create_slider_widget("Şiddet", 0, 100, 2, "mA", "#3498DB", self.update_preview_2)
         w_dur_2, self.slider_dur_2 = self._create_slider_widget("Süre", 1, 120, 20, "Dk", "#3498DB", None)
