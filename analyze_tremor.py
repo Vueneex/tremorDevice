@@ -235,8 +235,8 @@ def run_analysis(file_path, stim_params=None):
                 s1 = stim_params['ch1']
                 s2 = stim_params['ch2']
                 stim_text = (f"UYGULANAN STİMÜLASYON: "
-                             f"Kanal 1 ({s1['hz']}Hz, {s1['pw']}us, {s1['amp']}uA) | "
-                             f"Kanal 2 ({s2['hz']}Hz, {s2['pw']}us, {s2['amp']}uA)")
+                         f"Kanal 1 ({s1['hz']}Hz, {s1['pw']}us, {s1['amp']}mA) | " 
+                         f"Kanal 2 ({s2['hz']}Hz, {s2['pw']}us, {s2['amp']}mA)")
                 
                 # Sayfanın en altına (Y: 0.03) ortalayarak yazdırır, grafikleri bozmaz.
                 fig.text(0.5, 0.03, stim_text, ha='center', va='center', fontsize=10, fontweight='bold',

@@ -1204,7 +1204,7 @@ class ParkinsonGUI(QMainWindow):
         wave = np.zeros_like(t); wave[t_mod < PW_ms] = amp; wave[(t_mod >= PW_ms) & (t_mod < 2 * PW_ms)] = -amp
 
         self.curve_stim_1.setData(t, wave)
-        padding = 1000 if amp < 9000 else 0
+        padding = 10 if amp < 90 else 0
         self.plot_stim_1.setYRange(-(amp + padding), (amp + padding)); self.plot_stim_1.setXRange(0, 50)
         
         # --- YATAY ÇİZİM İÇİN GÜNCELLENEN KISIM ---
@@ -1222,7 +1222,7 @@ class ParkinsonGUI(QMainWindow):
         wave = np.zeros_like(t); wave[t_mod < PW_ms] = amp; wave[(t_mod >= PW_ms) & (t_mod < 2 * PW_ms)] = -amp
 
         self.curve_stim_2.setData(t, wave)
-        padding = 1000 if amp < 9000 else 0
+        padding = 10 if amp < 90 else 0
         self.plot_stim_2.setYRange(-(amp + padding), (amp + padding)); self.plot_stim_2.setXRange(0, 50)
         
         # --- YATAY ÇİZİM İÇİN GÜNCELLENEN KISIM ---
