@@ -1188,11 +1188,51 @@ class ParkinsonGUI(QMainWindow):
             self.txt_full_details.setHtml(info_html)
             
     def open_report_from_link(self, url):
+        import base64
         file_path = url.toLocalFile()
-        if os.path.exists(file_path):
-            try: os.startfile(file_path)
-            except Exception as e: print(f"Dosya açma hatası: {e}")
-        else: QMessageBox.warning(self, "Hata", "Dosya fiziksel olarak bulunamadı!")
+        fixed_path = os.path.normpath(file_path)
+        
+        if not os.path.exists(fixed_path):
+            QMessageBox.warning(self, "Hata", "Dosya bulunamadı!")
+            return
+
+        if fixed_path.endswith('.pdf'):
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(fixed_path)
+                html_content = f"<div style='background-color: #525659; padding: 20px;'>"
+                
+                for page_num in range(len(doc)):
+                    page = doc.load_page(page_num)
+                    
+                    # Sayfayı yüksek kaliteli bir resme çevir (Netlik için)
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+                    img_data = pix.tobytes("png")
+                    
+                    # Resmi arayüzün anlayacağı base64 formatına sok
+                    base64_img = base64.b64encode(img_data).decode('utf-8')
+                    
+                    # Arayüzdeki kutunun güncel genişliğini hesapla (Kaydırma çubuğu ve boşluklar için 60 px düşüyoruz)
+                    fit_width = self.txt_full_details.width() - 60
+                    
+                    # Resmi tam piksel değerine göre boyutlandırarak HTML'e ekle
+                    html_content += f"""
+                        <div style='margin-bottom: 20px; text-align: center;'>
+                            <img src='data:image/png;base64,{base64_img}' width='{fit_width}'>
+                        </div>
+                    """
+                
+                html_content += "</div>"
+                doc.close()
+
+                # Görsel raporu mevcut kutuya (txt_full_details) bas
+                self.txt_full_details.setHtml(html_content)
+                
+                # İstersen dosyayı yine dışarıda da açmaya devam etsin
+                os.startfile(fixed_path)
+
+            except Exception as e:
+                QMessageBox.critical(self, "Görselleştirme Hatası", f"Rapor görseli oluşturulamadı: {e}")
 
     # ==========================================
     # ÇİFT KANAL ÖNİZLEME VE ZAMANLAYICI FONKSİYONLARI
