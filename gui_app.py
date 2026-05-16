@@ -637,6 +637,47 @@ class ChangePasswordDialog(QDialog):
         else:
             QMessageBox.critical(self, "Hata", "Eski şifre hatalı!")
 
+class PDFPreviewDialog(QDialog):
+    def __init__(self, filepath, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Rapor Görsel Önizleme - {os.path.basename(filepath)}")
+        self.resize(780, 900) # İdeal okuma boyutu
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # PDF sayfalarını resim olarak basacağımız kutu
+        self.browser = QTextBrowser()
+        self.browser.setStyleSheet("background-color: #525659;") # PDF okuyucu arka planı (Koyu Gri)
+        layout.addWidget(self.browser)
+        
+        self.load_pdf_as_images(filepath)
+        
+    def load_pdf_as_images(self, filepath):
+        import fitz
+        import base64
+        try:
+            doc = fitz.open(filepath)
+            html_content = "<div style='background-color: #525659; padding: 10px; text-align: center;'>"
+            
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                # HD kalitede resme çevir
+                pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+                img_data = pix.tobytes("png")
+                base64_img = base64.b64encode(img_data).decode('utf-8')
+                
+                # Sayfa görünümü kazandırmak için beyaz arka plan ve gölgelendirme ekliyoruz
+                html_content += f"""
+                    <div style='margin-bottom: 15px; display: inline-block; background-color: white; box-shadow: 0 4px 8px rgba(0,0,0,0.3); padding: 5px;'>
+                        <img src='data:image/png;base64,{base64_img}' width='720'>
+                    </div>
+                """
+            html_content += "</div>"
+            doc.close()
+            self.browser.setHtml(html_content)
+        except Exception as e:
+            self.browser.setHtml(f"<b style='color:red;'>PDF Görselleştirilirken Hata Oluştu: {e}</b>")
+
 # ----------------------------------------
 # ANA PENCERE (GUI)
 # ----------------------------------------
@@ -1158,10 +1199,10 @@ class ParkinsonGUI(QMainWindow):
             reports = []
             if os.path.exists(t_folder):
                 for f in os.listdir(t_folder):
-                    if f.endswith(('.pdf', '.csv')): reports.append({'file': f, 'type': 'Tremor Analizi', 'time': os.path.getmtime(os.path.join(t_folder, f))})
+                    if f.endswith(('.pdf')): reports.append({'file': f, 'type': 'Tremor Analizi', 'time': os.path.getmtime(os.path.join(t_folder, f))})
             if os.path.exists(b_folder):
                 for f in os.listdir(b_folder):
-                    if f.endswith(('.pdf', '.csv')): reports.append({'file': f, 'type': 'Bradikinezi Analizi', 'time': os.path.getmtime(os.path.join(b_folder, f))})
+                    if f.endswith(('.pdf')): reports.append({'file': f, 'type': 'Bradikinezi Analizi', 'time': os.path.getmtime(os.path.join(b_folder, f))})
                         
             reports.sort(key=lambda x: x['time'], reverse=True)
             report_rows_html = ""
@@ -1229,7 +1270,7 @@ class ParkinsonGUI(QMainWindow):
                 self.txt_full_details.setHtml(html_content)
                 
                 # İstersen dosyayı yine dışarıda da açmaya devam etsin
-                os.startfile(fixed_path)
+                # os.startfile(fixed_path) // Edge olarak açılmasını da istersen burayı kullan. 
 
             except Exception as e:
                 QMessageBox.critical(self, "Görselleştirme Hatası", f"Rapor görseli oluşturulamadı: {e}")
@@ -1400,8 +1441,8 @@ class ParkinsonGUI(QMainWindow):
         if not self.current_patient: return
         p_folder = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient)
         self.list_tremor.clear(); self.list_bradi.clear()
-        if os.path.exists(os.path.join(p_folder, "VeriSeti_Tremor")): self.list_tremor.addItems([f for f in os.listdir(os.path.join(p_folder, "VeriSeti_Tremor")) if f.endswith(('.pdf', '.csv'))])
-        if os.path.exists(os.path.join(p_folder, "VeriSeti_Bradikinezi")): self.list_bradi.addItems([f for f in os.listdir(os.path.join(p_folder, "VeriSeti_Bradikinezi")) if f.endswith(('.pdf', '.csv'))])
+        if os.path.exists(os.path.join(p_folder, "VeriSeti_Tremor")): self.list_tremor.addItems([f for f in os.listdir(os.path.join(p_folder, "VeriSeti_Tremor")) if f.endswith(('.pdf'))])
+        if os.path.exists(os.path.join(p_folder, "VeriSeti_Bradikinezi")): self.list_bradi.addItems([f for f in os.listdir(os.path.join(p_folder, "VeriSeti_Bradikinezi")) if f.endswith(('.pdf'))])
 
     # ==========================================
     # KAYIT VE ANALIZ (HATA AYIKLAYICILI POP-UP SİSTEMİ)
@@ -1467,8 +1508,7 @@ class ParkinsonGUI(QMainWindow):
                 # Parametreleri gönderiyoruz
                 analyze_bradykinesia.run_analysis(self.current_filename, stim_data)
                 pdf_path = self.current_filename.replace(".csv", "_FINAL_RAPOR.pdf")
-            # ... geri kalan hata kontrolleri aynı kalabilir ...
-                
+            
             QApplication.processEvents()
             
             # PDF OLUŞTU MU KONTROLÜ (Sessiz Hataları Yakalar)
@@ -1548,15 +1588,25 @@ class ParkinsonGUI(QMainWindow):
         if not self.current_patient: return
         filepath = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient, "VeriSeti_Tremor", item.text())
         if os.path.exists(filepath):
+            # 1. Harici olarak aç (Zaten var olan özellik)
             try: os.startfile(filepath)
             except: pass
+            
+            # 2. Arayüz içi Pop-up pencere olarak görselleştir (Yeni eklenen özellik)
+            dialog = PDFPreviewDialog(filepath, self)
+            dialog.exec()
 
     def open_pdf_bradi(self, item):
         if not self.current_patient: return
         filepath = os.path.join(self.workspace_root, "VeriSeti_Genel", "Hastalar", self.current_patient, "VeriSeti_Bradikinezi", item.text())
         if os.path.exists(filepath):
+            # 1. Harici olarak aç (Zaten var olan özellik)
             try: os.startfile(filepath)
             except: pass
+            
+            # 2. Arayüz içi Pop-up pencere olarak görselleştir (Yeni eklenen özellik)
+            dialog = PDFPreviewDialog(filepath, self)
+            dialog.exec()
 
     def create_button(self, text, bg_color, hover_color=None, text_color="#FFFFFF"):
         if hover_color is None: hover_color = bg_color 
